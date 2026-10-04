@@ -1,0 +1,6 @@
+*.fasl
+*~
+system-index.txt
+plato100.txt
+plato1g.txt
+wc
