@@ -88,7 +88,8 @@
 ;; passthrough" wrappers (COUNT-LINES-ASCII-GENERIC and friends) below
 ;; costs a SAP-boxing full call at every task instead of an inlined
 ;; one; one blanket declaim can't miss any of them.
-(declaim (inline count-lines-words-and-chars-utf8-generic
+(declaim (inline count-lines-generic
+                 count-lines-words-and-chars-utf8-generic
                  count-lines-words-and-chars-ascii-generic
                  count-lines-words-and-chars-utf8-strict-generic
                  count-lines-utf8-generic count-words-utf8-generic
@@ -129,7 +130,8 @@
 (declaim (inline swar-newline-mask))
 ;; Bit 7 of each byte lane set iff that byte is #\\Newline (10).
 (defun swar-newline-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0)))
+  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
+           (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((mask 0))
     (declare (type (unsigned-byte 64) mask))
     (do-chunk-bytes (byte chunk mask) (= byte 10))))
@@ -138,7 +140,8 @@
 ;; Bit 7 of each byte lane set iff that byte is ASCII whitespace
 ;; (space, or in [9,13]).
 (defun swar-ws-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0)))
+  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
+           (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((mask 0))
     (declare (type (unsigned-byte 64) mask))
     (do-chunk-bytes (byte chunk mask) (%generic-ws-p byte))))
@@ -178,7 +181,8 @@
 ;; exclusion is handled separately by SWAR-BAD-SURROGATE-MASK below,
 ;; since it needs the previous chunk's carry.
 (defun swar-utf8-valid-lead-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0)))
+  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
+           (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((mask 0))
     (declare (type (unsigned-byte 64) mask))
     (do-chunk-bytes (byte chunk mask) (or (<= byte #x7F) (<= #xC2 byte #xF4)))))
@@ -187,7 +191,8 @@
 ;; Bit 7 of each byte lane set iff that byte is 0xED (a UTF-8 lead byte
 ;; that may introduce an illegal surrogate-half encoding).
 (defun swar-ed-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0)))
+  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
+           (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let ((mask 0))
     (declare (type (unsigned-byte 64) mask))
     (do-chunk-bytes (byte chunk mask) (= byte #xED))))
@@ -201,7 +206,8 @@
 (defun swar-bad-surrogate-mask (chunk prev-ed-high-bit)
   (declare (type (unsigned-byte 64) chunk)
            (type (unsigned-byte 8) prev-ed-high-bit)
-           (optimize (speed 3) (safety 0)))
+           (optimize (speed 3) (safety 0))
+           (sb-ext:muffle-conditions sb-ext:compiler-note))
   (let* ((ed-mask (swar-ed-mask chunk))
          (follow-mask 0)
          (ed-shifted (logior (ldb (byte 64 0) (ash ed-mask 8)) prev-ed-high-bit)))

@@ -1,4 +1,5 @@
 LISP := /home/arthur/repos/sb-simd-512/run-sbcl.sh
+#LISP := sbcl
 
 LISPFLAGS := --noinform --no-userinit --non-interactive
 

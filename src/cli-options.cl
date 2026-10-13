@@ -25,7 +25,7 @@
 
 (defconstant +min-chunk-size+ (* 1024))             ; 1 KB
 (defconstant +max-chunk-size+ (* 1024 1024 1024))   ; 1 GB
-(defconstant +default-chunk-size+ (* 1024 1024))     ; 1 MB (optimal L2 cache size)
+;; +default-chunk-size+ is defined in common.cl
 
 (defun parse-cli-integer (string min max option-name)
   "Parse STRING as an integer, ensure it lies in [MIN, MAX].
@@ -76,7 +76,7 @@
     (nreverse files)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter *wc-options*
+  (sb-ext:defglobal *wc-options*
     '(("l" "lines")
       ("w" "words")
       ("c" "bytes")

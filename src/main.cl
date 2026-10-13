@@ -118,6 +118,9 @@
             (format *error-output* "wc: using ~(~a~) implementation~%"
                     implementation))
 
+          (when (> number-threads 1)
+            (ensure-worker-pool number-threads chunk-size))
+
           ;; Threads managed directly per file
           (let* ((files (nreverse files))
                  (mask (make-dispatch-mask count-lines count-words count-chars))

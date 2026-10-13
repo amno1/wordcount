@@ -22,6 +22,7 @@
   :build-pathname "wc"
   :entry-point "wordcount::main"
   :components ((:module "src"
+                :serial t
                 :components ((src "packages")
                              (src "common")
                              (src "kernels-avx2")

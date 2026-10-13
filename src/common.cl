@@ -26,30 +26,28 @@
 (in-package "SB-C")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defknown wc::fpopcount ((unsigned-byte 64)) fixnum
+  (defknown wc::fpopcount ((unsigned-byte 64)) (unsigned-byte 64)
       (flushable movable)
-    :overwrite-fndb-silently t)
-
-  (deftransform wc::fpopcount ((x) ((unsigned-byte 64)) fixnum)
-    '(sb-c::%primitive wc::fpopcount x)))
+    :overwrite-fndb-silently t))
 
 (in-package "SB-VM")
 
-(define-vop (wc::fpopcount)
-  (:policy :fast-safe)
-  (:translate wc::fpopcount)
-  (:args (x :scs (unsigned-reg)))
-  (:arg-types unsigned-num)
-  (:results (r :scs (any-reg)))
-  (:result-types fixnum)
-  (:generator 2
-    (inst popcnt r x)
-    (inst shl r 1)))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-vop (wc::fpopcount)
+    (:policy :fast-safe)
+    (:translate wc::fpopcount)
+    (:args (x :scs (unsigned-reg)))
+    (:arg-types unsigned-num)
+    (:results (r :scs (unsigned-reg)))
+    (:result-types unsigned-num)
+    (:generator 1
+      (inst popcnt r x))))
 
 (in-package :sb-posix)
 
 #+unix
 (eval-when (:compile-toplevel :load-toplevel :execute)
+  (declaim (inline sysconf pread posix-read aligned-alloc alien-free posix-fadvise posix-madvise))
 
   (define-call "posix_fadvise" int minusp
     (fd file-descriptor) (offset off-t) (size off-t) (advice int))
@@ -58,6 +56,11 @@
     (addr sb-sys:system-area-pointer) (length unsigned) (flags int))
 
   (define-alien-routine sysconf int (name int))
+
+  (define-alien-routine ("read" posix-read) sb-alien:long
+    (fd sb-alien:int)
+    (buf sb-sys:system-area-pointer)
+    (count sb-alien:size-t))
 
   (define-alien-routine ("pread" pread) sb-alien:long
     (fd sb-alien:int)
@@ -75,16 +78,19 @@
   (export 'sysconf :sb-posix)
   (export 'posix-madvise :sb-posix)
   (export 'posix-fadvise :sb-posix)
+  (export 'posix-read :sb-posix)
   (export 'pread :sb-posix)
   (export 'aligned-alloc :sb-posix)
   (export 'alien-free :sb-posix))
 
 (in-package :wc)
 
+(defconstant +default-chunk-size+ (* 1024 1024))
+
 ;; Per-lane accumulators in the unrolled kernels. Bounded by the input
 ;; size, so 60 bits is ample, and summing four of them still fits a
 ;; FIXNUM -- which keeps the final (+ a0 a1 a2 a3) inline.
-(deftype acc-count () '(unsigned-byte 60))
+(deftype acc-count () '(unsigned-byte 64))
 
 (declaim (ftype (function () (values (integer 1 #.most-positive-fixnum) &optional)) ncpus))
 (defun ncpus ()

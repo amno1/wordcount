@@ -52,7 +52,7 @@
   (:export #:wc-simple #:wc-suite))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter *wc-avx512-p*
+  (sb-ext:defglobal *wc-avx512-p*
     #+avx512 t
     #-avx512 nil))
 
