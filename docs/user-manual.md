@@ -198,12 +198,25 @@ If only `-c` is requested (`-l`, `-w`, `-m` are all off), `wc` short-circuits
 to `lseek(SEEK_END) - lseek(SEEK_CUR)` for seekable files and does not
 read the file at all. The file offset is preserved.
 
-### Small files use the single-threaded path
+### Small files and the 8 MiB threshold
 
 `--number-threads` is honoured only for seekable regular files ≥ 8 MiB.
 Files below this threshold use a linear `read(2)` loop even when
-`--number-threads > 1`, because thread start-up and per-block state
-transfer dominate on small inputs.
+`--number-threads > 1`. At 1 MiB chunk size and 8 threads, 8 MiB is the
+exact point where every worker gets at least one full block of work.
+Furthermore, single-threaded AVX-512 scans files below 8 MiB in under
+1 millisecond (< 800 µs), making sequential execution instantaneous while
+avoiding thread synchronization overhead. See `tools/bench-threshold-report.md`
+for full benchmarks.
+
+### Fast process exit (application mode)
+
+When running as a CLI utility, `wc` delegates thread and memory teardown
+to the OS kernel upon exit via `_exit(2)` (`sb-ext:exit :abort t`). Worker
+threads are not joined, foreign memory is not deallocated individually, and
+for single-file inputs, closing the file descriptor is deferred to kernel
+exit. This eliminates exit latency and matches standard C/C++ utility design.
+Full RAII cleanup is maintained in library mode.
 
 ### Non-seekable inputs
 

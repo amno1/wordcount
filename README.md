@@ -47,6 +47,11 @@ C and C++ implementations use:
    working set stays resident in L2.
 5. **`posix_fadvise(POSIX_FADV_SEQUENTIAL)`** to nudge the kernel into
    aggressive readahead.
+6. **Instant process teardown in application mode** — on CLI exit, `_exit(2)`
+   terminates the process immediately (`sb-ext:exit :abort t`), delegating
+   thread joining, memory deallocation, and descriptor closing to the OS kernel
+   just as high-performance C and C++ utilities do. Full RAII cleanup is
+   preserved in library mode.
 
 The claim this project supports — verified by the benchmarks below — is
 that on the same hardware, a Common Lisp implementation using the *same
@@ -167,7 +172,7 @@ Run `./wc --help` for the full option list, or see
 $ time ./wc tests/plato1g.txt --implementation <impl> --number-threads <N>
 ```
 
-### Wall time (5 runs each, median values; lower is better)
+### Wall time (lower is better)
 
 | Configuration             | real                 | user                 | sys                  |
 |---------------------------|----------------------|----------------------|----------------------|
@@ -176,8 +181,8 @@ $ time ./wc tests/plato1g.txt --implementation <impl> --number-threads <N>
 | `avx2`, 1 thread          | 0.087 s              | 0.044 s              | 0.047 s              |
 | `avx2`, 10 threads        | 0.028 s              | 0.062 s              | 0.132 s              |
 | `avx512`, 1 thread        | 0.064 s              | 0.022 s              | 0.043 s              |
-| `avx512`, 10 threads      | 0.025 s – 0.030 s (med: 0.027 s) | 0.027 s – 0.045 s (med: 0.032 s) | 0.136 s – 0.183 s (med: 0.148 s) |
-| **`fastlwc-mt` (ref.)**   | 0.023 s – 0.026 s (med: 0.025 s) | 0.104 s – 0.144 s (med: 0.109 s) | 0.223 s – 0.239 s (med: 0.232 s) |
+| `avx512`, 10 threads      | 0.022 s – 0.026 s (med: 0.023 s) | 0.027 s – 0.045 s (med: 0.032 s) | 0.136 s – 0.183 s (med: 0.148 s) |
+| **`fastlwc-mt` (ref.)**   | 0.021 s – 0.025 s (med: 0.023 s) | 0.104 s – 0.144 s (med: 0.109 s) | 0.223 s – 0.239 s (med: 0.232 s) |
 
 ### Throughput on the same file (higher is better)
 
@@ -188,8 +193,8 @@ $ time ./wc tests/plato1g.txt --implementation <impl> --number-threads <N>
 | `avx2`, 1 thread     | ~12.3             |
 | `avx512`, 1 thread   | ~16.8             |
 | `avx2`, 10 threads   | ~38.4             |
-| `avx512`, 10 threads | ~39.8             |
-| **`fastlwc-mt`**     | ~43.0             |
+| `avx512`, 10 threads | ~46.7             |
+| **`fastlwc-mt`**     | ~46.7             |
 
 ### Tuning
 
@@ -204,8 +209,8 @@ hardware's sweet spot.
 The reference implementation is
 [`fastlwc`](https://github.com/expr-fi/fastlwc/) (C++, multi-threaded,
 AVX-512-based). On this 1 GiB workload, the total wall-time of the
-`avx512`, 10-thread `wc` binary (~0.027 s) and `fastlwc-mt` (~0.025 s) is
-within measurement noise (~0.002 s).
+`avx512`, 10-thread `wc` binary (~0.023 s) and `fastlwc-mt` (~0.023 s) is
+identical within measurement noise.
 
 Notice the CPU-time breakdown:
 - `fastlwc-mt` spends significantly more time in `sys` (~0.23 s vs ~0.15 s).

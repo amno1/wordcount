@@ -348,7 +348,10 @@ sbcl --noinform --non-interactive --load tests/test-avx512-kernels.lisp
   core on AMD Zen 5). Benchmark your own file sizes and cache hierarchy.
 - Byte-only counting (`count-bytes-*`) never reads seekable files; it uses
   `lseek` and returns immediately.
-- The single-threaded threshold is 8 MiB.
-- On AMD Zen 5 (10 cores / 20 threads), the library achieves ~16.8 GB/s
-  single-thread AVX-512 and ~39.8 GB/s multi-threaded on a 1 GiB file. See the
-  README benchmark section for details.
+- The single-threaded threshold is 8 MiB. Below 8 MiB, single-threaded AVX-512
+  finishes in < 800 µs without thread scheduling overhead, and 8 MiB is the
+  minimum size where an 8-thread pool gets 1 full 1 MiB chunk per worker. See
+  `tools/bench-threshold-report.md` for the empirical threshold benchmark.
+- On AMD Zen 5 (10 cores / 20 threads), the utility achieves ~16.8 GB/s
+  single-thread AVX-512 and ~46.7 GB/s multi-threaded (~0.023 s wall time) on
+  a 1 GiB file. See the README benchmark section for details.
