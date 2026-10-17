@@ -51,9 +51,5 @@
   (:nicknames #:wcb)
   (:export #:wc-simple #:wc-suite))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (sb-ext:defglobal *wc-avx512-p*
-    #+avx512 t
-    #-avx512 nil))
 
 ;;; packages.cl ends here

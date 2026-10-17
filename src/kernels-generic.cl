@@ -27,12 +27,10 @@
 ;; --implementation, instead of one silently redefining another's names.
 ;;
 ;; This file needs neither SB-SIMD nor an AVX-512-capable SBCL build, so
-;; unlike kernels-avx512.cl it is always compiled. It is the
-;; implementation guaranteed to run on any x86-64 SBCL. That guarantee
-;; is also why the per-chunk helpers below use portable LOGCOUNT rather
-;; than a POPCNT VOP: not every x86-64 has the POPCNT instruction, and
-;; this is the fallback path that must run even where
-;; SIMD and newer instruction sets hardware is not present.
+;; unlike kernels-avx512.cl it is always compiled. These generic kernels
+;; are pure SWAR and use portable LOGCOUNT rather than a POPCNT VOP so they
+;; run even without modern instruction sets (though note the full default
+;; wordcount binary also includes kernels-avx2.cl).
 ;;
 ;; The combined counters (LINES-AND-WORDS, WORDS-AND-CHARS, ...) still
 ;; just call the single-purpose ones below rather than fusing loops --
@@ -122,10 +120,11 @@
 ;; Bind BYTE-VAR to each of CHUNK's 8 bytes in turn, accumulating bit 7
 ;; of that lane into MASK-VAR (already bound) whenever BODY is true.
 (defmacro do-chunk-bytes ((byte-var chunk mask-var) &body body)
-  `(dotimes (%k 8 ,mask-var)
-     (let ((,byte-var (swar-byte ,chunk %k)))
-       (when (progn ,@body)
-         (setf ,mask-var (logior ,mask-var (ash #x80 (* %k 8))))))))
+  (let ((k (gensym "K")))
+    `(dotimes (,k 8 ,mask-var)
+       (let ((,byte-var (swar-byte ,chunk ,k)))
+         (when (progn ,@body)
+           (setf ,mask-var (logior ,mask-var (ash #x80 (* ,k 8)))))))))
 
 (declaim (inline swar-newline-mask))
 ;; Bit 7 of each byte lane set iff that byte is #\\Newline (10).

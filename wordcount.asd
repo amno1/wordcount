@@ -27,14 +27,13 @@
                              (src "common")
                              (src "kernels-avx2")
                              (src "kernels-generic")
-                             (src "kernels-avx512")
+                             #+avx512 (src "kernels-avx512")
+                             (src "dispatch")
+                             (src "thread-pool")
                              (src "wc-driver")
-                             (src "with-cli-parsing")
                              (src "cli-options")
                              (src "main"))))
 
-  :depends-on ("asdf"
-               "uiop"
+  :depends-on ("uiop"
                "sb-simd"
-               "string-case"
                "with-user-abort"))

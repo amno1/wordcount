@@ -123,7 +123,6 @@
     with 0x04 of-type u8.32 = (u8.32 #x04)
     with 0x09 of-type u8.32 = (u8.32 #x09)
     with 0x20 of-type u8.32 = (u8.32 #x20)
-    with 0xFF of-type u8.32 = (u8.32 #xFF)
 
     ;; accumulators
     with a1 of-type u64.4 = (u64.4 0)
@@ -257,7 +256,7 @@
     with a3 of-type u64.4 = (u64.4 0)
     with a4 of-type u64.4 = (u64.4 0)
 
-    with ws-prev of-type u8.32 = (u8.32 0)
+    with ed-prev-chunk of-type u8.32 = (u8.32 0)
 
     for c1 = (u8.32-sap-ref sap (+ i 0))
     for c2 = (u8.32-sap-ref sap (+ i 32))
@@ -283,20 +282,20 @@
                               (valid-start (u8.32-andc1 bad-surr (u8.32-or ascii vlead))))
                          (values (u8.32-sad valid-start 0x0) ed)))))
 
-         (multiple-value-bind (cnt ed) (validate-and-count c1 ws-prev)
-           (setf a1 (u64.4+ a1 cnt) ws-prev ed))
-         (multiple-value-bind (cnt ed) (validate-and-count c2 ws-prev)
-           (setf a2 (u64.4+ a2 cnt) ws-prev ed))
-         (multiple-value-bind (cnt ed) (validate-and-count c3 ws-prev)
-           (setf a3 (u64.4+ a3 cnt) ws-prev ed))
-         (multiple-value-bind (cnt ed) (validate-and-count c4 ws-prev)
-           (setf a4 (u64.4+ a4 cnt) ws-prev ed)))
+         (multiple-value-bind (cnt ed) (validate-and-count c1 ed-prev-chunk)
+           (setf a1 (u64.4+ a1 cnt) ed-prev-chunk ed))
+         (multiple-value-bind (cnt ed) (validate-and-count c2 ed-prev-chunk)
+           (setf a2 (u64.4+ a2 cnt) ed-prev-chunk ed))
+         (multiple-value-bind (cnt ed) (validate-and-count c3 ed-prev-chunk)
+           (setf a3 (u64.4+ a3 cnt) ed-prev-chunk ed))
+         (multiple-value-bind (cnt ed) (validate-and-count c4 ed-prev-chunk)
+           (setf a4 (u64.4+ a4 cnt) ed-prev-chunk ed)))
     finally
        (return
          (loop for j from loop-end below size
                with tail of-type fixnum = 0
                with chars   = (sum-lanes (u64.4+ a1 a2 a3 a4))
-               with prev-ed = (logbitp 31 (u8.32-movemask ws-prev))
+               with prev-ed = (logbitp 31 (u8.32-movemask ed-prev-chunk))
                for byte    = (sb-sys:sap-ref-8 sap j)
                for ascii   = (<= 0 byte 127)
                for vlead   = (<= 194 byte 244)
@@ -712,8 +711,9 @@
            (type fixnum size)
            (type (unsigned-byte 8) ws-init-state)
            (optimize (speed 3) (safety 0)))
-  (multiple-value-bind (lines words) (count-words-ascii sap size ws-init-state)
-    (values lines words size)))
+  (multiple-value-bind (_ words) (count-words-ascii sap size ws-init-state)
+    (declare (ignore _))
+    (values nil words size)))
 
 
 ;; count lines, words and chars
