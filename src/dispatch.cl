@@ -39,10 +39,10 @@
                       `(,base-name ,@args))))))
 
 (declaim (inline dispatch-kernel))
-(defun dispatch-kernel (implementation dispatch-mask char-mode sap size init-ws)
+(defun dispatch-kernel (implementation dispatch-mask char-mode sap size init-ws &optional (init-ed 0))
   (declare (type sb-sys:system-area-pointer sap)
            (type fixnum size)
-           (type (unsigned-byte 8) init-ws)
+           (type (unsigned-byte 8) init-ws init-ed)
            (type (unsigned-byte 3) dispatch-mask)
            (type (member nil :bytes :chars :chars-strict) char-mode)
            (type (member :generic :avx2 :avx512) implementation))
@@ -50,26 +50,26 @@
       (case dispatch-mask
         ((0 7)
          (case char-mode
-           (:chars-strict (kernel-call count-lines-words-and-chars-utf8-strict implementation sap size init-ws))
+           (:chars-strict (kernel-call count-lines-words-and-chars-utf8-strict implementation sap size init-ws init-ed))
            (:chars        (kernel-call count-lines-words-and-chars-utf8 implementation sap size init-ws))
            (t             (kernel-call count-lines-words-and-chars-ascii implementation sap size init-ws))))
         (1
          (case char-mode
-           (:chars-strict (kernel-call count-chars-utf8-strict implementation sap size))
+           (:chars-strict (kernel-call count-chars-utf8-strict implementation sap size init-ed))
            (:chars        (kernel-call count-chars-utf8 implementation sap size))
            (t             (kernel-call count-chars-ascii implementation sap size))))
         (2
          (kernel-call count-words-ascii implementation sap size init-ws))
         (3
          (case char-mode
-           (:chars-strict (kernel-call count-words-and-chars-utf8-strict implementation sap size init-ws))
+           (:chars-strict (kernel-call count-words-and-chars-utf8-strict implementation sap size init-ws init-ed))
            (:chars        (kernel-call count-words-and-chars-utf8 implementation sap size init-ws))
            (t             (kernel-call count-words-and-chars-ascii implementation sap size init-ws))))
         (4
          (kernel-call count-lines-ascii implementation sap size))
         (5
          (case char-mode
-           (:chars-strict (kernel-call count-lines-and-chars-utf8-strict implementation sap size))
+           (:chars-strict (kernel-call count-lines-and-chars-utf8-strict implementation sap size init-ed))
            (:chars        (kernel-call count-lines-and-chars-utf8 implementation sap size))
            (t             (kernel-call count-lines-and-chars-ascii implementation sap size))))
         (6

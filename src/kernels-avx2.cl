@@ -239,8 +239,9 @@
          (return (values nil nil (the fixnum (+ chars tail)))))))
 
 (declaim (inline count-chars-utf8-strict))
-(defun count-chars-utf8-strict (sap size)
+(defun count-chars-utf8-strict (sap size &optional (ed-init-state 0))
   (declare (type fixnum size)
+           (type (unsigned-byte 8) ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (loop
@@ -256,7 +257,7 @@
     with a3 of-type u64.4 = (u64.4 0)
     with a4 of-type u64.4 = (u64.4 0)
 
-    with ed-prev-chunk of-type u8.32 = (u8.32 0)
+    with ed-prev-chunk of-type u8.32 = (u8.32 (if (zerop ed-init-state) 0 #xFF))
 
     for c1 = (u8.32-sap-ref sap (+ i 0))
     for c2 = (u8.32-sap-ref sap (+ i 32))
@@ -396,8 +397,9 @@
 ;; count lines and chars
 
 (declaim (inline count-lines-and-chars-utf8-strict))
-(defun count-lines-and-chars-utf8-strict (sap size)
+(defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
   (declare (type fixnum size)
+           (type (unsigned-byte 8) ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (loop
@@ -415,7 +417,7 @@
     with ca of-type u64.4 = (u64.4 0)
 
     ;; Carry
-    with ed-prev of-type u8.32 = (u8.32 0)
+    with ed-prev of-type u8.32 = (u8.32 (if (zerop ed-init-state) 0 #xFF))
 
     for p1 = (u8.32-sap-ref sap (+ i 0))
     for p2 = (u8.32-sap-ref sap (+ i 32))
@@ -619,9 +621,9 @@
                                   (the fixnum (+ chars tchars))))))))
 
 (declaim (inline count-words-and-chars-utf8-strict))
-(defun count-words-and-chars-utf8-strict (sap size ws-init-state)
+(defun count-words-and-chars-utf8-strict (sap size ws-init-state &optional (ed-init-state 0))
   (declare (type fixnum size)
-           (type (unsigned-byte 8) ws-init-state)
+           (type (unsigned-byte 8) ws-init-state ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (loop
@@ -641,7 +643,7 @@
 
     ;; carry
     with ws-prev of-type u8.32 = (u8.32 ws-init-state)
-    with ed-prev of-type u8.32 = (u8.32 0)
+    with ed-prev of-type u8.32 = (u8.32 (if (zerop ed-init-state) 0 #xFF))
 
     ;; chunks
     for c1 = (u8.32-sap-ref sap (+ i 0))
@@ -719,9 +721,9 @@
 ;; count lines, words and chars
 
 (declaim (inline count-lines-words-and-chars-utf8-strict))
-(defun count-lines-words-and-chars-utf8-strict (sap size ws-init-state)
+(defun count-lines-words-and-chars-utf8-strict (sap size ws-init-state &optional (ed-init-state 0))
   (declare (type fixnum size)
-           (type (unsigned-byte 8) ws-init-state)
+           (type (unsigned-byte 8) ws-init-state ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (loop
@@ -742,7 +744,7 @@
 
     ;; carry
     with ws-prev of-type u8.32 = (u8.32 ws-init-state)
-    with ed-prev of-type u8.32 = (u8.32 #x00)
+    with ed-prev of-type u8.32 = (u8.32 (if (zerop ed-init-state) 0 #xFF))
 
     ;; chunks
     for c1 = (u8.32-sap-ref sap (+ i 0))

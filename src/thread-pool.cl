@@ -93,10 +93,14 @@
                           (init-ws (if (zerop block)
                                        #xFF
                                        (let ((b (sb-sys:sap-ref-8 buf-sap -1)))
-                                         (if (or (= b 32) (<= 9 b 13)) #xFF #x00)))))
-                     (declare (type fixnum actual-len) (type (unsigned-byte 8) init-ws))
+                                         (if (or (= b 32) (<= 9 b 13)) #xFF #x00))))
+                          (init-ed (if (zerop block)
+                                       0
+                                       (let ((b (sb-sys:sap-ref-8 buf-sap -1)))
+                                         (if (= b #xED) 1 0)))))
+                     (declare (type fixnum actual-len) (type (unsigned-byte 8) init-ws init-ed))
                      (multiple-value-bind (l w c)
-                         (dispatch-kernel implementation dispatch-mask char-mode buf-sap actual-len init-ws)
+                         (dispatch-kernel implementation dispatch-mask char-mode buf-sap actual-len init-ws init-ed)
                        (incf t-lines l)
                        (incf t-words w)
                        (incf t-chars c)))))))

@@ -289,8 +289,9 @@
       (values nil nil (the fixnum chars)))))
 
 (declaim (inline count-chars-utf8-strict-512))
-(defun count-chars-utf8-strict-512 (sap size)
+(defun count-chars-utf8-strict-512 (sap size &optional (ed-init-state 0))
   (declare (type fixnum size)
+           (type (unsigned-byte 8) ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (let ((loop-end (logandc2 size 511))
@@ -301,7 +302,7 @@
         (ved +utf8-ved+)
         (va0 +utf8-va0+)
         (vbf +utf8-vbf+)
-        (prev-was-ed 0)
+        (prev-was-ed (if (zerop ed-init-state) 0 1))
         (ca0 0) (ca1 0) (ca2 0) (ca3 0))
     (declare (type fixnum loop-end)
              (type avx512bw:u8.64 v80 v0 v194 v244 ved va0 vbf)
@@ -333,8 +334,8 @@
                (setf prev-was-ed (if (= byte #xED) 1 0)))
       (values nil nil (the fixnum chars)))))
 
-(defun count-chars-utf8-strict-avx512 (sap size)
-  (count-chars-utf8-strict-512 sap size))
+(defun count-chars-utf8-strict-avx512 (sap size &optional (ed-init-state 0))
+  (count-chars-utf8-strict-512 sap size ed-init-state))
 
 (defun count-chars-ascii-avx512 (sap size)
   (declare (ignore sap))
@@ -397,8 +398,9 @@
 ;;; count lines and chars
 
 (declaim (inline count-lines-and-chars-utf8-strict-512))
-(defun count-lines-and-chars-utf8-strict-512 (sap size)
+(defun count-lines-and-chars-utf8-strict-512 (sap size &optional (ed-init-state 0))
   (declare (type fixnum size)
+           (type (unsigned-byte 8) ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (let ((loop-end (logandc2 size 511))
@@ -410,7 +412,7 @@
         (ved +utf8-ved+)
         (va0 +utf8-va0+)
         (vbf +utf8-vbf+)
-        (prev-was-ed 0)
+        (prev-was-ed (if (zerop ed-init-state) 0 1))
         (la0 0) (la1 0) (la2 0) (la3 0)
         (ca0 0) (ca1 0) (ca2 0) (ca3 0))
     (declare (type fixnum loop-end)
@@ -445,8 +447,8 @@
                (setf prev-was-ed (if (= byte #xED) 1 0)))
       (values (the fixnum lines) nil (the fixnum chars)))))
 
-(defun count-lines-and-chars-utf8-strict-avx512 (sap size)
-  (count-lines-and-chars-utf8-strict-512 sap size))
+(defun count-lines-and-chars-utf8-strict-avx512 (sap size &optional (ed-init-state 0))
+  (count-lines-and-chars-utf8-strict-512 sap size ed-init-state))
 
 (defun count-lines-and-chars-utf8-avx512 (sap size)
   (declare (type fixnum size)
@@ -493,9 +495,9 @@
 ;;; count words and chars
 
 (declaim (inline count-words-and-chars-utf8-strict-512))
-(defun count-words-and-chars-utf8-strict-512 (sap size ws-init-state)
+(defun count-words-and-chars-utf8-strict-512 (sap size ws-init-state &optional (ed-init-state 0))
   (declare (type fixnum size)
-           (type (unsigned-byte 8) ws-init-state)
+           (type (unsigned-byte 8) ws-init-state ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (let ((loop-end (logandc2 size 511))
@@ -508,7 +510,7 @@
         (va0 +utf8-va0+)
         (vbf +utf8-vbf+)
         (prev-was-ws (if (zerop ws-init-state) 0 1))
-        (prev-was-ed 0)
+        (prev-was-ed (if (zerop ed-init-state) 0 1))
         (wa0 0) (wa1 0) (wa2 0) (wa3 0)
         (ca0 0) (ca1 0) (ca2 0) (ca3 0))
     (declare (type fixnum loop-end)
@@ -549,8 +551,8 @@
                      prev-was-ed (if (= byte #xED) 1 0)))
       (values nil (the fixnum words) (the fixnum chars)))))
 
-(defun count-words-and-chars-utf8-strict-avx512 (sap size ws-init-state)
-  (count-words-and-chars-utf8-strict-512 sap size ws-init-state))
+(defun count-words-and-chars-utf8-strict-avx512 (sap size ws-init-state &optional (ed-init-state 0))
+  (count-words-and-chars-utf8-strict-512 sap size ws-init-state ed-init-state))
 
 (defun count-words-and-chars-utf8-avx512 (sap size ws-init-state)
   (declare (type fixnum size)
@@ -607,9 +609,10 @@
 ;;; count lines, words and chars
 
 (declaim (inline count-lines-words-and-chars-utf8-strict-512))
-(defun count-lines-words-and-chars-utf8-strict-512 (sap size ws-init-state)
+(declaim (inline count-lines-words-and-chars-utf8-strict-512))
+(defun count-lines-words-and-chars-utf8-strict-512 (sap size ws-init-state &optional (ed-init-state 0))
   (declare (type fixnum size)
-           (type (unsigned-byte 8) ws-init-state)
+           (type (unsigned-byte 8) ws-init-state ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (let ((loop-end (logandc2 size 511))
@@ -623,7 +626,7 @@
         (va0 +utf8-va0+)
         (vbf +utf8-vbf+)
         (prev-was-ws (if (zerop ws-init-state) 0 1))
-        (prev-was-ed 0)
+        (prev-was-ed (if (zerop ed-init-state) 0 1))
         (la0 0) (la1 0) (la2 0) (la3 0)
         (wa0 0) (wa1 0) (wa2 0) (wa3 0)
         (ca0 0) (ca1 0) (ca2 0) (ca3 0))
@@ -669,8 +672,8 @@
                      prev-was-ed (if (= byte #xED) 1 0)))
       (values (the fixnum lines) (the fixnum words) (the fixnum chars)))))
 
-(defun count-lines-words-and-chars-utf8-strict-avx512 (sap size ws-init-state)
-  (count-lines-words-and-chars-utf8-strict-512 sap size ws-init-state))
+(defun count-lines-words-and-chars-utf8-strict-avx512 (sap size ws-init-state &optional (ed-init-state 0))
+  (count-lines-words-and-chars-utf8-strict-512 sap size ws-init-state ed-init-state))
 
 (defun count-lines-words-and-chars-utf8-avx512 (sap size ws-init-state)
   (declare (type fixnum size)

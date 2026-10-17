@@ -233,6 +233,29 @@
 (def-kernel-test count-words-and-chars-utf8-strict *utf8-strict-ws-ids*)
 (def-kernel-test count-lines-words-and-chars-utf8-strict *utf8-strict-ws-ids*)
 
+(parachute:define-test strict-utf8-chunk-boundary-carry
+  (let* ((prefix (make-array 63 :element-type '(unsigned-byte 8) :initial-element 65))
+         (suffix (make-array 63 :element-type '(unsigned-byte 8) :initial-element 66))
+         ;; [63 bytes 'A'] + [#xED] + [#xA0] + [63 bytes 'B'] = 128 bytes
+         (full (coerce (append (coerce prefix 'list) '(#xED #xA0) (coerce suffix 'list))
+                       '(simple-array (unsigned-byte 8) (*))))
+         (chunk1 (subseq full 0 64)) ; ends with #xED
+         (chunk2 (subseq full 64)))  ; begins with #xA0
+    (with-sap-from-bytes (sap full)
+      (let ((total-chars (nth-value 2 (count-chars-utf8-strict sap (length full) 0))))
+        (with-sap-from-bytes (c1-sap chunk1)
+          (with-sap-from-bytes (c2-sap chunk2)
+            (let* ((c1-chars (nth-value 2 (count-chars-utf8-strict c1-sap (length chunk1) 0)))
+                   (c2-chars (nth-value 2 (count-chars-utf8-strict c2-sap (length chunk2) 1))))
+              ;; The sum with threaded carry matches total
+              (parachute:is = total-chars (+ c1-chars c2-chars))
+              ;; All backends agree on chunk2 with init-ed = 1
+              (parachute:is eql t (equal (multiple-value-list (count-chars-utf8-strict c2-sap (length chunk2) 1))
+                                         (multiple-value-list (count-chars-utf8-strict-generic c2-sap (length chunk2) 1))))
+              #+avx512
+              (parachute:is eql t (equal (multiple-value-list (count-chars-utf8-strict c2-sap (length chunk2) 1))
+                                         (multiple-value-list (count-chars-utf8-strict-avx512 c2-sap (length chunk2) 1)))))))))))
+
 (let ((result (parachute:test :wc)))
   (sb-ext:exit :code (if (eq (parachute:status result) :passed) 0 1)))
 

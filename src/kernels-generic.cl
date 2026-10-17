@@ -292,13 +292,14 @@
 ;; ascii or a valid multi-byte lead (C2-F4), unless it's the A0-BF
 ;; continuation of an 0xED lead (the encoding of an illegal surrogate
 ;; half)
-(defun count-chars-utf8-strict-generic (sap size)
+(defun count-chars-utf8-strict-generic (sap size &optional (ed-init-state 0))
   (declare (type fixnum size)
+           (type (unsigned-byte 8) ed-init-state)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
   (let ((loop-end (logandc2 size 7))
         (chars 0)
-        (prev-ed-hi 0))
+        (prev-ed-hi (if (zerop ed-init-state) 0 #x80)))
     (declare (type fixnum loop-end chars)
              (type (unsigned-byte 8) prev-ed-hi))
     (loop for i of-type fixnum from 0 below loop-end by 8
@@ -337,10 +338,10 @@
           nil
           (nth-value 2 (count-chars-utf8-generic sap size))))
 
-(defun count-lines-and-chars-utf8-strict-generic (sap size)
+(defun count-lines-and-chars-utf8-strict-generic (sap size &optional (ed-init-state 0))
   (values (nth-value 0 (count-lines-generic sap size))
           nil
-          (nth-value 2 (count-chars-utf8-strict-generic sap size))))
+          (nth-value 2 (count-chars-utf8-strict-generic sap size ed-init-state))))
 
 (defun count-words-and-chars-ascii-generic (sap size ws-init-state)
   (values nil
@@ -352,10 +353,10 @@
           (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
           (nth-value 2 (count-chars-utf8-generic sap size))))
 
-(defun count-words-and-chars-utf8-strict-generic (sap size ws-init-state)
+(defun count-words-and-chars-utf8-strict-generic (sap size ws-init-state &optional (ed-init-state 0))
   (values nil
           (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
-          (nth-value 2 (count-chars-utf8-strict-generic sap size))))
+          (nth-value 2 (count-chars-utf8-strict-generic sap size ed-init-state))))
 
 (defun count-lines-words-and-chars-ascii-generic (sap size ws-init-state)
   (values (nth-value 0 (count-lines-generic sap size))
@@ -367,9 +368,9 @@
           (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
           (nth-value 2 (count-chars-utf8-generic sap size))))
 
-(defun count-lines-words-and-chars-utf8-strict-generic (sap size ws-init-state)
+(defun count-lines-words-and-chars-utf8-strict-generic (sap size ws-init-state &optional (ed-init-state 0))
   (values (nth-value 0 (count-lines-generic sap size))
           (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
-          (nth-value 2 (count-chars-utf8-strict-generic sap size))))
+          (nth-value 2 (count-chars-utf8-strict-generic sap size ed-init-state))))
 
 ;;; kernels-generic.cl ends here
