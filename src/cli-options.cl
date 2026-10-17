@@ -25,6 +25,7 @@
 
 (defconstant +min-chunk-size+ (* 1024))             ; 1 KB
 (defconstant +max-chunk-size+ (* 1024 1024 1024))   ; 1 GB
+(defconstant +max-number-threads+ 1024)
 ;; +default-chunk-size+ is defined in common.cl
 
 (defstruct (cli-config (:copier nil))
@@ -130,7 +131,7 @@
                   (setf (cli-config-number-threads config)
                         (parse-cli-integer (require-val)
                                            1
-                                           (ncpus)
+                                           +max-number-threads+
                                            "--number-threads")))
 
                  ((string= opt "implementation")
@@ -198,7 +199,7 @@ Options:
       --implementation=X select counting kernel: generic, avx2, or avx512
       --debug            print which implementation was used
       --chunk-size=BYTES set read buffer size (1 KB – 1 GB, default 1 MB)
-      --number-threads=N use N worker threads (1 – number of CPU cores)
+      --number-threads=N use N worker threads (default: min(8, CPU cores))
       --total=WHEN       when to print total: auto, always, only, never
       --files0-from=F    read input from NUL-terminated filenames in F
       --help             display this help and exit

@@ -24,8 +24,9 @@ default set.
 The program is implemented in SBCL Common Lisp and uses `pread(2)` on
 seekable files so that multiple worker threads can count different
 byte ranges of the same file in parallel. When `--number-threads` is 1, or
-the file fits into a single chunk (`size <= chunk-size`), or the input is a non-seekable stream
-(stdin, pipe, socket), a single-threaded linear read is used instead.
+the input is a non-seekable stream (stdin, pipe, socket), a single-threaded
+linear read loop is used. When `--number-threads > 1`, multi-threaded execution
+is always used.
 
 ## Options
 
@@ -33,21 +34,27 @@ Options that take a value accept both `--opt=VALUE` and `--opt VALUE`.
 
 ### Counting
 
-| Short | Long        | Effect                                                 |
-|-------|-------------|--------------------------------------------------------|
-| `-c`  | `--bytes`   | print the byte count                                   |
-| `-m`  | `--chars`   | print the character count (UTF-8, lenient by default)  |
-| `-l`  | `--lines`   | print the newline count                                |
-| `-w`  | `--words`   | print the word count                                   |
+`-c`, `--bytes`
+  Print the byte count.
+
+`-m`, `--chars`
+  Print the character count (UTF-8, lenient by default).
+
+`-l`, `--lines`
+  Print the newline count.
+
+`-w`, `--words`
+  Print the word count.
 
 Short options may be clustered: `-lwc` is equivalent to `-l -w -c`.
 The default when no counting flag is given is `-l -w -c`.
 
 ### Character-mode selection
 
-| Long            | Effect                                                                 |
-|-----------------|------------------------------------------------------------------------|
-| `--utf8-strict` | Enable strict UTF-8 character validation. Implies `-m`. Rejects 0xED-lead sequences followed by 0xA0–0xBF (surrogate-half encodings) and does not accept bytes < 0xC2 or > 0xF4 as lead bytes. |
+`--utf8-strict`
+  Enable strict UTF-8 character validation. Implies `-m`. Rejects `0xED`-lead
+  sequences followed by `0xA0`–`0xBF` (surrogate-half encodings) and does not
+  accept bytes `< 0xC2` or `> 0xF4` as lead bytes.
 
 Without `--utf8-strict`, `-m` uses a lenient heuristic: any byte for which
 `(byte & 0xC0) != 0x80` is counted as a character start. That is fast and
@@ -56,10 +63,12 @@ or surrogate-half sequences.
 
 ### Kernel selection
 
-| Long                    | Effect                                                       |
-|-------------------------|--------------------------------------------------------------|
-| `--implementation=NAME` | Select the kernel backend. One of `generic`, `avx2`, `avx512`. Default is the fastest backend the binary was built with. |
-| `--debug`               | Print `wc: using <impl> implementation` to stderr before processing. |
+`--implementation=NAME`
+  Select the kernel backend: `generic`, `avx2`, or `avx512`. Default is the
+  fastest backend the binary was built with.
+
+`--debug`
+  Print `wc: using <impl> implementation` to stderr before processing.
 
 Requesting a backend the binary was not built with falls back gracefully
 with a warning on stderr:
@@ -71,58 +80,60 @@ with a warning on stderr:
 
 ### Threading and buffer tuning
 
-| Long                      | Effect                                                       |
-|---------------------------|--------------------------------------------------------------|
-| `--number-threads=N`      | Use `N` worker threads for multi-block seekable files. Must be between 1 and the CPU count reported by `sysconf(_SC_NPROCESSORS_ONLN)`. Default is `min(8, ncpus)`. |
-| `--chunk-size=BYTES`      | Buffer size per worker, and the unit of block partitioning under `--number-threads`. Between 1024 (1 KiB) and 1073741824 (1 GiB). Default is 1048576 (1 MiB). |
+`--number-threads=N`
+  Use `N` worker threads for seekable files. Default is `min(8, ncpus)`.
+  When `N > 1`, `wc` always uses the multi-threaded worker pool regardless
+  of file size.
+
+`--chunk-size=BYTES`
+  Buffer size per worker, and the unit of block partitioning under
+  `--number-threads`. Between 1024 (1 KiB) and 1073741824 (1 GiB).
+  Default is 1048576 (1 MiB).
 
 The chunk size and thread count interact through cache behaviour. On Zen 5
-laptops, `--chunk-size 1048576 --number-threads 8..10` is optimal.
-More threads than physical cores and chunks that overflow L2 will both
-degrade throughput; experiment on your own hardware.
+machines, `--chunk-size 1048576 --number-threads 8..10` is optimal.
+Users can experiment with any thread count and chunk size on their hardware.
 
 ### Total-line control
 
-| Long                | Effect                                                          |
-|---------------------|-----------------------------------------------------------------|
-| `--total=WHEN`      | `auto` (default), `always`, `never`, `only`.                    |
-
-- `auto` — print the `total` line iff more than one input was processed.
-- `always` — always print it.
-- `never` — never print it.
-- `only` — print *only* the total; suppress per-file lines.
+`--total=WHEN`
+  Control when the total line is printed: `auto` (default), `always`,
+  `never`, or `only`.
+  - `auto` — print the `total` line iff more than one input was processed.
+  - `always` — always print it.
+  - `never` — never print it.
+  - `only` — print *only* the total; suppress per-file lines.
 
 ### File-list input
 
-| Long                | Effect                                                          |
-|---------------------|-----------------------------------------------------------------|
-| `--files0-from=F`   | Read input filenames from `F`, NUL-separated. `-` means stdin. If the file list ends up empty, exit 0 without reading stdin. |
+`--files0-from=F`
+  Read input filenames from `F`, NUL-separated. `-` means standard input.
+  If the file list ends up empty, exit 0 without reading stdin.
 
 ### Informational
 
-| Long         | Effect                                  |
-|--------------|-----------------------------------------|
-| `--help`     | Print usage and exit with status 0.     |
-| `--version`  | Print version and exit with status 0.   |
+`--help`
+  Print usage and exit with status 0.
+
+`--version`
+  Print program version and exit with status 0.
 
 ### Argument termination
 
-`--` terminates option parsing. Every following token is treated as a
-filename, including tokens starting with `-`.
+`--`
+  Terminates option parsing. Every following token is treated as a
+  filename, including tokens starting with `-`.
 
 ## Exit status
 
-| Code | Meaning                                                              |
-|------|----------------------------------------------------------------------|
-| 0    | All inputs were processed without error.                             |
-| 1    | At least one input could not be opened or read; the per-file error was printed to stderr, and the remaining inputs were still processed. |
-| 130  | Interrupted via `with-user-abort` (Ctrl-C).                         |
+- **0** — All inputs were processed without error.
+- **1** — At least one input could not be opened or read; the per-file error was printed to stderr, and the remaining inputs were still processed.
+- **130** — Interrupted via `with-user-abort` (Ctrl-C).
 
 ## Environment
 
-| Variable     | Effect                                                                 |
-|--------------|------------------------------------------------------------------------|
-| `WC_NO_SIMD` | If set **at build time**, suppresses `:avx2` and `:avx512` features in `wordcount.asd`, forcing a generic-only binary. Ignored at runtime. |
+`WC_NO_SIMD`
+  If set **at build time**, suppresses `:avx2` and `:avx512` features in `wordcount.asd`, forcing a generic-only binary. Ignored at runtime.
 
 ## Examples
 
@@ -198,16 +209,16 @@ If only `-c` is requested (`-l`, `-w`, `-m` are all off), `wc` short-circuits
 to `lseek(SEEK_END) - lseek(SEEK_CUR)` for seekable files and does not
 read the file at all. The file offset is preserved.
 
-### Threading, chunk size, and performance thresholds
+### Threading and performance
 
 `--number-threads` and `--chunk-size` are always honoured for seekable regular
-files whenever the file size exceeds the chunk size (i.e. whenever there are at
-least 2 blocks to distribute). Files that fit within a single chunk
-(`size <= chunk-size`) naturally execute on a single thread using sequential
-`read(2)` to avoid thread wake-up overhead for zero work.
+files. When `--number-threads > 1` is requested, `wc` executes via the
+multi-threaded worker pool regardless of file size or block count. The
+single-threaded linear `read(2)` loop is used only when `--number-threads` is 1
+or when reading from non-seekable streams.
 
-With the default configuration (8 threads, 1 MiB chunk size), empirical saturation
-occurs at **8 MiB**, where every worker receives at least one full 1 MiB block.
+Under the default configuration (8 threads, 1 MiB chunk size), empirical saturation
+occurs around **8 MiB**, where every worker receives at least one full 1 MiB block.
 Single-threaded AVX-512 scans files below 8 MiB in under 1 millisecond (< 800 µs),
 making sequential execution very fast on small files. However, users can freely
 tune `--number-threads` and `--chunk-size` (e.g. `--chunk-size 64k`) to find the

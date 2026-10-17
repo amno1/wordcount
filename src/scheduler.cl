@@ -297,7 +297,7 @@ Returns (VALUES LINES WORDS CHARS BYTES ERROR)."
          ;; Fast path: if dispatch-mask is 0, we only care about bytes and file size is known!
          (if (zerop dispatch-mask)
              (values 0 0 0 size nil)
-             (if (or (<= nthreads 1) (<= size (max 64 buf-size)))
+             (if (<= nthreads 1)
                  (process-fd-linear fd dispatch-mask char-mode implementation buf-size)
                  (process-fd-mt fd size nthreads dispatch-mask char-mode implementation buf-size)))))
       ;; Empty file

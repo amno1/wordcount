@@ -75,9 +75,9 @@ using the same algorithms. See [Comparison with fastlwc-mt](#comparison-with-fas
     `mask8.64`, `mask64-bits`, `fpopcount`). Emitted when the build host
     advertises AVX-512 *and* the SBCL/sb-simd tree provides the AVX-512
     instruction-set additions.
-- Multi-threaded scheduler with a reusable worker pool, `pread`-based
-  block scheduling, and a single-threaded fallback for single-block files (`size <= chunk-size`) and
-  non-seekable streams.
+- Multi-threaded scheduler with a reusable worker pool and `pread`-based
+  block scheduling, falling back to a single-threaded linear read loop when
+  `number-threads ≤ 1` or when reading from non-seekable streams.
 - Runtime kernel selection via `--implementation` and a dispatch table,
   so the same binary can exercise all available kernels for benchmarking.
 - Standardized public API (see `docs/library-manual.md`) with three tiers:

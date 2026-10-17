@@ -135,8 +135,8 @@ The FD tier:
 - Short-circuits to `lseek(SEEK_END) - lseek(SEEK_CUR)` if only bytes
   were requested (`count-bytes-fd`). On seekable files, the file offset is preserved
   and no file read is performed.
-- Uses the single-threaded path when `number-threads ≤ 1` or when the file
-  fits into a single chunk (`size ≤ chunk-size`).
+- Uses the single-threaded path when `number-threads ≤ 1` or when the input
+  is non-seekable.
 - Does **not** close `fd`.
 
 ### Path tier
