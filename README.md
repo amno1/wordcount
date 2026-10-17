@@ -76,7 +76,7 @@ using the same algorithms. See [Comparison with fastlwc-mt](#comparison-with-fas
     advertises AVX-512 *and* the SBCL/sb-simd tree provides the AVX-512
     instruction-set additions.
 - Multi-threaded scheduler with a reusable worker pool, `pread`-based
-  block scheduling, and a single-threaded fallback for small files (< 8 MiB) and
+  block scheduling, and a single-threaded fallback for single-block files (`size <= chunk-size`) and
   non-seekable streams.
 - Runtime kernel selection via `--implementation` and a dispatch table,
   so the same binary can exercise all available kernels for benchmarking.

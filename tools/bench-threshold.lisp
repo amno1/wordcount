@@ -6,18 +6,17 @@
 
 (in-package :wc)
 
-(defun run-threshold-benchmark (base-file)
+(defun run-threshold-benchmark (base-file &key (nthreads (min 8 (ncpus))) (chunk-size +default-chunk-size+))
   (format t "~%========================================================================================================================~%")
-  (format t " Benchmarking Linear vs MT Across File Sizes (AVX-512, 8 threads, 1 MB chunks)~%")
+  (format t " Benchmarking Linear vs MT Across File Sizes (AVX-512, ~d threads, ~d KB chunks)~%"
+          nthreads (round chunk-size 1024))
   (format t " Base file: ~a~%" base-file)
   (format t "========================================================================================================================~%")
   (format t " ~9a | ~22a | ~22a | ~22a | ~14a~%"
           "Size" "Linear (1 thread)" "MT Warm (pool ready)" "MT Cold (spawn pool)" "Speedup (Warm)")
   (format t "------------------------------------------------------------------------------------------------------------------------~%")
 
-  (let* ((nthreads (min 8 (ncpus)))
-         (chunk-size +default-chunk-size+)
-         (sizes-mb '(0.25 0.5 1.0 2.0 4.0 6.0 8.0 12.0 16.0 24.0 32.0 64.0)))
+  (let* ((sizes-mb '(0.25 0.5 1.0 2.0 4.0 6.0 8.0 12.0 16.0 24.0 32.0 64.0)))
 
     ;; Pre-ensure worker pool exists for warm testing
     (ensure-worker-pool nthreads chunk-size)

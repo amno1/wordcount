@@ -135,8 +135,8 @@ The FD tier:
 - Short-circuits to `lseek(SEEK_END) - lseek(SEEK_CUR)` if only bytes
   were requested (`count-bytes-fd`). On seekable files, the file offset is preserved
   and no file read is performed.
-- Uses the single-threaded path when `number-threads ≤ 1` or the file
-  is smaller than 8 MiB.
+- Uses the single-threaded path when `number-threads ≤ 1` or when the file
+  fits into a single chunk (`size ≤ chunk-size`).
 - Does **not** close `fd`.
 
 ### Path tier
@@ -348,10 +348,12 @@ sbcl --noinform --non-interactive --load tests/test-avx512-kernels.lisp
   core on AMD Zen 5). Benchmark your own file sizes and cache hierarchy.
 - Byte-only counting (`count-bytes-*`) never reads seekable files; it uses
   `lseek` and returns immediately.
-- The single-threaded threshold is 8 MiB. Below 8 MiB, single-threaded AVX-512
-  finishes in < 800 µs without thread scheduling overhead, and 8 MiB is the
-  minimum size where an 8-thread pool gets 1 full 1 MiB chunk per worker. See
-  `tools/bench-threshold-report.md` for the empirical threshold benchmark.
+- Multi-threading is enabled whenever `number-threads > 1` and `size > chunk-size`
+  (at least two blocks). With default settings (8 threads, 1 MiB chunk size), 8 MiB
+  is the empirical saturation point where every worker gets 1 full block of work.
+  Users can tune `number-threads` and `chunk-size` to find the optimal break-even
+  point for their hardware. See `tools/bench-threshold-report.md` for the empirical
+  threshold benchmark.
 - On AMD Zen 5 (10 cores / 20 threads), the utility achieves ~16.8 GB/s
   single-thread AVX-512 and ~46.7 GB/s multi-threaded (~0.023 s wall time) on
   a 1 GiB file. See the README benchmark section for details.

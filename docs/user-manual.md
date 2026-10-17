@@ -24,7 +24,7 @@ default set.
 The program is implemented in SBCL Common Lisp and uses `pread(2)` on
 seekable files so that multiple worker threads can count different
 byte ranges of the same file in parallel. When `--number-threads` is 1, or
-the file is smaller than 8 MiB, or the input is a non-seekable stream
+the file fits into a single chunk (`size <= chunk-size`), or the input is a non-seekable stream
 (stdin, pipe, socket), a single-threaded linear read is used instead.
 
 ## Options
@@ -73,7 +73,7 @@ with a warning on stderr:
 
 | Long                      | Effect                                                       |
 |---------------------------|--------------------------------------------------------------|
-| `--number-threads=N`      | Use `N` worker threads for seekable files ≥ 8 MiB. Must be between 1 and the CPU count reported by `sysconf(_SC_NPROCESSORS_ONLN)`. Default is `min(8, ncpus)`. |
+| `--number-threads=N`      | Use `N` worker threads for multi-block seekable files. Must be between 1 and the CPU count reported by `sysconf(_SC_NPROCESSORS_ONLN)`. Default is `min(8, ncpus)`. |
 | `--chunk-size=BYTES`      | Buffer size per worker, and the unit of block partitioning under `--number-threads`. Between 1024 (1 KiB) and 1073741824 (1 GiB). Default is 1048576 (1 MiB). |
 
 The chunk size and thread count interact through cache behaviour. On Zen 5
@@ -198,16 +198,22 @@ If only `-c` is requested (`-l`, `-w`, `-m` are all off), `wc` short-circuits
 to `lseek(SEEK_END) - lseek(SEEK_CUR)` for seekable files and does not
 read the file at all. The file offset is preserved.
 
-### Small files and the 8 MiB threshold
+### Threading, chunk size, and performance thresholds
 
-`--number-threads` is honoured only for seekable regular files ≥ 8 MiB.
-Files below this threshold use a linear `read(2)` loop even when
-`--number-threads > 1`. At 1 MiB chunk size and 8 threads, 8 MiB is the
-exact point where every worker gets at least one full block of work.
-Furthermore, single-threaded AVX-512 scans files below 8 MiB in under
-1 millisecond (< 800 µs), making sequential execution instantaneous while
-avoiding thread synchronization overhead. See `tools/bench-threshold-report.md`
-for full benchmarks.
+`--number-threads` and `--chunk-size` are always honoured for seekable regular
+files whenever the file size exceeds the chunk size (i.e. whenever there are at
+least 2 blocks to distribute). Files that fit within a single chunk
+(`size <= chunk-size`) naturally execute on a single thread using sequential
+`read(2)` to avoid thread wake-up overhead for zero work.
+
+With the default configuration (8 threads, 1 MiB chunk size), empirical saturation
+occurs at **8 MiB**, where every worker receives at least one full 1 MiB block.
+Single-threaded AVX-512 scans files below 8 MiB in under 1 millisecond (< 800 µs),
+making sequential execution very fast on small files. However, users can freely
+tune `--number-threads` and `--chunk-size` (e.g. `--chunk-size 64k`) to find the
+optimal operating points and break-even thresholds for their specific CPU caches,
+core topologies, and storage systems. See `tools/bench-threshold-report.md` for
+in-depth benchmarks and analysis.
 
 ### Fast process exit (application mode)
 
@@ -231,14 +237,15 @@ is ever a UTF-8 continuation byte (which are all ≥ `0x80`), so word and
 line counts are identical in ASCII and UTF-8 modes. Only `-m` (character
 counting) differs.
 
-### Differences from GNU `wc`
+### Compatibility with GNU `wc`
 
 - The exact per-file error-message wording and the formatting spacing of the
   `total` line differ slightly. Numeric columns are formatted to width 8 with a
   separating space.
-- When both `-c` and `-m` are given, `wc` prints *both* byte and character
-  columns. Some older GNU `wc` versions printed only one.
+- When both `-c` and `-m` are given, current `wc` prints *both* byte and
+  character columns. Some older GNU `wc` versions printed only one.
 - `--files0-from` with an empty file list exits 0 without reading stdin,
   matching current GNU `wc`.
 - Command-line compatibility with GNU `wc` is a goal but not a hard
   guarantee; the option set above is the authoritative list.
+- -L option (line width in printed columns) is not implemented

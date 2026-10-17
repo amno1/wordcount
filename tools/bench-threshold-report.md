@@ -2,17 +2,19 @@
 
 ## Context
 
-In `src/scheduler.cl`, `process-fd` implements a hard threshold for seekable files:
+In `src/scheduler.cl`, `process-fd` determines when to use multi-threading (`process-fd-mt`) vs sequential reading (`process-fd-linear`):
 
 ```lisp
-(if (or (<= nthreads 1) (< size (* 8 1024 1024)))
+(if (or (<= nthreads 1) (<= size (max 64 buf-size)))
     (process-fd-linear fd dispatch-mask char-mode implementation buf-size)
     (process-fd-mt fd size nthreads dispatch-mask char-mode implementation buf-size))
 ```
 
-Files smaller than **8 MiB** are always routed to `process-fd-linear` (single-threaded `read(2)` loop), even when `--number-threads` is set to 8 or 10.
+The user's requested thread count (`--number-threads`) and chunk size (`--chunk-size`) are always honoured whenever the file size exceeds the chunk size (i.e. multiple blocks exist). Files that fit into a single block (`size <= chunk-size`) naturally fall back to linear scanning because a single block cannot be partitioned across workers.
 
-This report investigates the cost model and empirical breakpoint where multi-threaded scheduling outcosts or outperforms sequential execution.
+Under the default configuration (8 worker threads, 1 MiB chunk size), **8 MiB** is the empirical saturation threshold where every worker receives at least one full block of work.
+
+This report investigates the cost model and empirical breakpoint where multi-threaded scheduling outcosts or outperforms sequential execution on AMD Zen 5 hardware.
 
 ---
 
@@ -79,13 +81,14 @@ $$\text{Blocks} = \left\lceil \frac{\text{File Size}}{\text{Chunk Size}} \right\
 
 ---
 
-## Conclusion
+## Conclusion & Hardware-Specific Insights
 
-The **8 MiB threshold** in `scheduler.cl` is optimal because:
+The empirical **8 MiB saturation threshold** observed under default settings (8 threads, 1 MiB chunks) highlights several key factors:
 
 1. **Partitioning constraint:** $\frac{8\text{ MiB}}{1\text{ MiB}} = 8\text{ blocks}$. It is the exact mathematical minimum at which all 8 worker threads receive a full block of work under default settings.
-2. **Sequential execution latency:** At $\le 8\text{ MiB}$, single-threaded AVX-512 finishes in **under 1 millisecond** ($< 800\ \mu\text{s}$). For interactive CLI usage, $< 1\text{ ms}$ execution is instantaneous, and bypassing multi-threading eliminates inter-thread synchronization and CPU core thrashing.
-3. **Cold-start safety:** It prevents single small files from suffering a $10\times$ regression caused by thread spawning latency.
+2. **Sequential execution latency:** At $\le 8\text{ MiB}$, single-threaded AVX-512 finishes in **under 1 millisecond** ($< 800\ \mu\text{s}$). For interactive CLI usage, $< 1\text{ ms}$ execution is instantaneous.
+3. **Cold-start overhead vs. Warm pools:** When invoking `wc` as a standalone binary on a single file, spawning 8 OS threads takes ~0.6–1.0 ms. For long-running processes or library usage where the pool is warm, multi-threading yields speedups starting from 2 MiB (2 blocks).
+4. **User configurability:** Because break-even points depend heavily on CPU microarchitecture, cache hierarchy, thread spawn cost, and storage latency, `wordcount` always honours `--number-threads` and `--chunk-size` (e.g. users with fast caches can choose `--chunk-size 64k` to enable parallel scaling on sub-megabyte files). Single-threaded mode is only used when `nthreads <= 1` or when the file fits into a single block (`size <= chunk-size`).
 
 ---
 

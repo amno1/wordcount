@@ -2,7 +2,7 @@
 #
 # Benchmark: Linear vs Multi-threaded (MT) execution across file sizes
 # Measures cold-start pool allocation and warm-pool semaphore synchronization costs
-# to demonstrate why the 8 MiB threshold in scheduler.cl is optimal.
+# to determine empirical saturation and break-even thresholds.
 #
 # Usage: ./tools/bench-threshold.sh [BASE_FILE]
 #
