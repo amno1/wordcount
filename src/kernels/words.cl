@@ -99,8 +99,8 @@
                finally
                   (return (values nil (the fixnum (+ words tail)) nil))))))
 
-(defun count-words-utf8 (sap size ws-prev)
-  (count-words-ascii sap size ws-prev))
+(defun count-words-utf8 (sap size ws-init-state)
+  (count-words-ascii sap size ws-init-state))
 
 
 ;;; AVX-512 implementation

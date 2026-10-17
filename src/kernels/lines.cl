@@ -10,7 +10,7 @@
 (declaim (optimize (speed 3) (safety 0)))
 
 (declaim (inline count-lines-generic count-lines-ascii-generic count-lines-utf8-generic
-                 count-lines-avx2 count-lines-ascii count-lines-utf8
+                 count-lines-ascii count-lines-utf8
                  #+avx512 count-lines-512
                  #+avx512 count-lines-avx512
                  #+avx512 count-lines-ascii-avx512
@@ -41,7 +41,7 @@
 
 ;;; AVX2 implementation
 
-(defun count-lines-avx2 (sap size)
+(defun count-lines-ascii (sap size)
   (declare (type fixnum size)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
@@ -84,11 +84,8 @@
          (declare (type fixnum lines tail))
          (return (values (the fixnum (+ lines tail)) nil nil)))))
 
-(defun count-lines-ascii (sap size)
-  (count-lines-avx2 sap size))
-
 (defun count-lines-utf8 (sap size)
-  (count-lines-avx2 sap size))
+  (count-lines-ascii sap size))
 
 
 ;;; AVX-512 implementation

@@ -23,6 +23,8 @@
 ;;; - Low-level SAP tier (count-*-sap): directly on foreign memory pointers.
 ;;; - Mid-level FD tier (count-*-fd): multi-threaded or stream processing on file descriptors.
 ;;; - High-level Path tier (count-*-path): processing filesystem paths.
+;;; All FD and Path functions return (VALUES LINES WORDS CHARS BYTES ERROR)
+;;; with unused count slots zeroed.
 
 ;;; Code:
 
@@ -54,7 +56,7 @@
 (defun count-lines-sap (sap size &key (implementation :auto))
   "Count newline characters in SAP buffer."
   (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
-  (kernel-call count-lines-ascii (resolve-implementation implementation) sap size))
+  (nth-value 0 (kernel-call count-lines-ascii (resolve-implementation implementation) sap size)))
 
 (defun count-words-sap (sap size &key (implementation :auto) (init-ws #xFF))
   "Count whitespace-delimited words in SAP buffer."
@@ -76,9 +78,9 @@
   (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ed))
   (nth-value 2 (kernel-call count-chars-utf8-strict (resolve-implementation implementation) sap size init-ed)))
 
-(defun count-bytes-sap (sap size)
+(defun count-bytes-sap (sap size &key (implementation :auto))
   "Count bytes in SAP buffer."
-  (declare (ignore sap) (type fixnum size))
+  (declare (ignore sap implementation) (type fixnum size))
   size)
 
 (defun count-lines-and-words-sap (sap size &key (implementation :auto) (init-ws #xFF))
@@ -153,6 +155,7 @@
 
 
 ;;; Tier 2 & 3: FD and Path counters
+;;; Standardized on (VALUES LINES WORDS CHARS BYTES ERROR) with unused count slots zeroed.
 
 (defmacro define-fd-counter (name dispatch-mask char-mode return-form)
   `(defun ,name (fd &key (implementation :auto) (number-threads (min 8 (ncpus))) (chunk-size +default-chunk-size+))
@@ -162,92 +165,92 @@
        (declare (ignorable lines words chars bytes err))
        ,return-form)))
 
-(defmacro define-path-counter (name fd-counter return-error-form)
+(defmacro define-path-counter (name fd-counter)
   `(defun ,name (path &key (implementation :auto) (number-threads (min 8 (ncpus))) (chunk-size +default-chunk-size+))
-     (if (string= path "-")
-         (,fd-counter 0 :implementation implementation
-                        :number-threads number-threads
-                        :chunk-size chunk-size)
-         (handler-case
+     (handler-case
+         (if (string= path "-")
+             (,fd-counter 0 :implementation implementation
+                            :number-threads number-threads
+                            :chunk-size chunk-size)
              (let ((fd (sb-posix:open path sb-posix:o-rdonly)))
                (unwind-protect
                     (,fd-counter fd :implementation implementation
                                     :number-threads number-threads
                                     :chunk-size chunk-size)
-                 (sb-posix:close fd)))
-           (error (e)
-             ,return-error-form)))))
+                 (sb-posix:close fd))))
+       (error (e)
+         (values 0 0 0 0 e)))))
 
 ;; 1. Lines
-(define-fd-counter count-lines-fd 4 nil (values lines bytes err))
-(define-path-counter count-lines-path count-lines-fd (values 0 0 e))
+(define-fd-counter count-lines-fd 4 nil (values lines 0 0 bytes err))
+(define-path-counter count-lines-path count-lines-fd)
 (defun count-lines (path &key (implementation :auto) (number-threads (min 8 (ncpus))) (chunk-size +default-chunk-size+))
   (count-lines-path path :implementation implementation :number-threads number-threads :chunk-size chunk-size))
 
 ;; 2. Words
-(define-fd-counter count-words-fd 2 nil (values words bytes err))
-(define-path-counter count-words-path count-words-fd (values 0 0 e))
+(define-fd-counter count-words-fd 2 nil (values 0 words 0 bytes err))
+(define-path-counter count-words-path count-words-fd)
 (defun count-words (path &key (implementation :auto) (number-threads (min 8 (ncpus))) (chunk-size +default-chunk-size+))
   (count-words-path path :implementation implementation :number-threads number-threads :chunk-size chunk-size))
 
 ;; 3. Chars ASCII
-(define-fd-counter count-chars-ascii-fd 1 nil (values chars bytes err))
-(define-path-counter count-chars-ascii-path count-chars-ascii-fd (values 0 0 e))
+(define-fd-counter count-chars-ascii-fd 1 nil (values 0 0 chars bytes err))
+(define-path-counter count-chars-ascii-path count-chars-ascii-fd)
 
 ;; 4. Chars UTF-8
-(define-fd-counter count-chars-utf8-fd 1 :chars (values chars bytes err))
-(define-path-counter count-chars-utf8-path count-chars-utf8-fd (values 0 0 e))
+(define-fd-counter count-chars-utf8-fd 1 :chars (values 0 0 chars bytes err))
+(define-path-counter count-chars-utf8-path count-chars-utf8-fd)
 
 ;; 5. Chars UTF-8 Strict
-(define-fd-counter count-chars-utf8-strict-fd 1 :chars-strict (values chars bytes err))
-(define-path-counter count-chars-utf8-strict-path count-chars-utf8-strict-fd (values 0 0 e))
+(define-fd-counter count-chars-utf8-strict-fd 1 :chars-strict (values 0 0 chars bytes err))
+(define-path-counter count-chars-utf8-strict-path count-chars-utf8-strict-fd)
 
 ;; 6. Bytes
-(define-fd-counter count-bytes-fd 0 nil (values bytes err))
-(define-path-counter count-bytes-path count-bytes-fd (values 0 e))
+(define-fd-counter count-bytes-fd 0 nil (values 0 0 0 bytes err))
+(define-path-counter count-bytes-path count-bytes-fd)
 (defun count-bytes (path &key (implementation :auto) (number-threads (min 8 (ncpus))) (chunk-size +default-chunk-size+))
   (count-bytes-path path :implementation implementation :number-threads number-threads :chunk-size chunk-size))
 
 ;; 7. Lines and Words
-(define-fd-counter count-lines-and-words-fd 6 nil (values lines words bytes err))
-(define-path-counter count-lines-and-words-path count-lines-and-words-fd (values 0 0 0 e))
+(define-fd-counter count-lines-and-words-fd 6 nil (values lines words 0 bytes err))
+(define-path-counter count-lines-and-words-path count-lines-and-words-fd)
 (defun count-lines-and-words (path &key (implementation :auto) (number-threads (min 8 (ncpus))) (chunk-size +default-chunk-size+))
   (count-lines-and-words-path path :implementation implementation :number-threads number-threads :chunk-size chunk-size))
 
 ;; 8. Lines and Chars ASCII
-(define-fd-counter count-lines-and-chars-ascii-fd 5 nil (values lines chars bytes err))
-(define-path-counter count-lines-and-chars-ascii-path count-lines-and-chars-ascii-fd (values 0 0 0 e))
+(define-fd-counter count-lines-and-chars-ascii-fd 5 nil (values lines 0 chars bytes err))
+(define-path-counter count-lines-and-chars-ascii-path count-lines-and-chars-ascii-fd)
 
 ;; 9. Lines and Chars UTF-8
-(define-fd-counter count-lines-and-chars-utf8-fd 5 :chars (values lines chars bytes err))
-(define-path-counter count-lines-and-chars-utf8-path count-lines-and-chars-utf8-fd (values 0 0 0 e))
+(define-fd-counter count-lines-and-chars-utf8-fd 5 :chars (values lines 0 chars bytes err))
+(define-path-counter count-lines-and-chars-utf8-path count-lines-and-chars-utf8-fd)
 
 ;; 10. Lines and Chars UTF-8 Strict
-(define-fd-counter count-lines-and-chars-utf8-strict-fd 5 :chars-strict (values lines chars bytes err))
-(define-path-counter count-lines-and-chars-utf8-strict-path count-lines-and-chars-utf8-strict-fd (values 0 0 0 e))
+(define-fd-counter count-lines-and-chars-utf8-strict-fd 5 :chars-strict (values lines 0 chars bytes err))
+(define-path-counter count-lines-and-chars-utf8-strict-path count-lines-and-chars-utf8-strict-fd)
 
 ;; 11. Words and Chars ASCII
-(define-fd-counter count-words-and-chars-ascii-fd 3 nil (values words chars bytes err))
-(define-path-counter count-words-and-chars-ascii-path count-words-and-chars-ascii-fd (values 0 0 0 e))
+(define-fd-counter count-words-and-chars-ascii-fd 3 nil (values 0 words chars bytes err))
+(define-path-counter count-words-and-chars-ascii-path count-words-and-chars-ascii-fd)
 
 ;; 12. Words and Chars UTF-8
-(define-fd-counter count-words-and-chars-utf8-fd 3 :chars (values words chars bytes err))
-(define-path-counter count-words-and-chars-utf8-path count-words-and-chars-utf8-fd (values 0 0 0 e))
+(define-fd-counter count-words-and-chars-utf8-fd 3 :chars (values 0 words chars bytes err))
+(define-path-counter count-words-and-chars-utf8-path count-words-and-chars-utf8-fd)
 
 ;; 13. Words and Chars UTF-8 Strict
-(define-fd-counter count-words-and-chars-utf8-strict-fd 3 :chars-strict (values words chars bytes err))
-(define-path-counter count-words-and-chars-utf8-strict-path count-words-and-chars-utf8-strict-fd (values 0 0 0 e))
+(define-fd-counter count-words-and-chars-utf8-strict-fd 3 :chars-strict (values 0 words chars bytes err))
+(define-path-counter count-words-and-chars-utf8-strict-path count-words-and-chars-utf8-strict-fd)
 
 ;; 14. Lines, Words, and Chars ASCII
 (define-fd-counter count-lines-words-and-chars-ascii-fd 7 nil (values lines words chars bytes err))
-(define-path-counter count-lines-words-and-chars-ascii-path count-lines-words-and-chars-ascii-fd (values 0 0 0 0 e))
+(define-path-counter count-lines-words-and-chars-ascii-path count-lines-words-and-chars-ascii-fd)
 
 ;; 15. Lines, Words, and Chars UTF-8
 (define-fd-counter count-lines-words-and-chars-utf8-fd 7 :chars (values lines words chars bytes err))
-(define-path-counter count-lines-words-and-chars-utf8-path count-lines-words-and-chars-utf8-fd (values 0 0 0 0 e))
+(define-path-counter count-lines-words-and-chars-utf8-path count-lines-words-and-chars-utf8-fd)
 
 ;; 16. Lines, Words, and Chars UTF-8 Strict
 (define-fd-counter count-lines-words-and-chars-utf8-strict-fd 7 :chars-strict (values lines words chars bytes err))
-(define-path-counter count-lines-words-and-chars-utf8-strict-path count-lines-words-and-chars-utf8-strict-fd (values 0 0 0 0 e))
+(define-path-counter count-lines-words-and-chars-utf8-strict-path count-lines-words-and-chars-utf8-strict-fd)
 
 ;;; api.cl ends here

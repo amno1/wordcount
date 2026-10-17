@@ -36,13 +36,14 @@
                        (chunk-size +default-chunk-size+))
   "Process FILE-LIST counting lines, words, characters, and bytes.
    Returns (VALUES RESULTS ANY-ERRORS-P)."
-  (let ((dispatch-mask (make-dispatch-mask count-lines
-                                          count-words
-                                          count-characters))
-        (final-results nil)
-        (any-errors nil))
+  (let* ((impl (resolve-implementation implementation))
+         (dispatch-mask (make-dispatch-mask count-lines
+                                            count-words
+                                            count-characters))
+         (final-results nil)
+         (any-errors nil))
     (declare (type (unsigned-byte 3) dispatch-mask)
-             (type (member :generic :avx2 :avx512) implementation)
+             (type (member :generic :avx2 :avx512) impl)
              (type fixnum number-threads chunk-size))
 
     (flet ((format-result (lines words chars bytes path)
@@ -61,7 +62,7 @@
           ;; Read from STDIN
           (handler-case
               (multiple-value-bind (l w c b err)
-                  (process-fd 0 dispatch-mask char-mode implementation number-threads chunk-size)
+                  (process-fd 0 dispatch-mask char-mode impl number-threads chunk-size)
                 (if err
                     (progn
                       (format *error-output* "wc: standard input: ~a~%" err)
@@ -76,7 +77,7 @@
             (if (string= path "-")
                 (handler-case
                     (multiple-value-bind (l w c b err)
-                        (process-fd 0 dispatch-mask char-mode implementation number-threads chunk-size)
+                        (process-fd 0 dispatch-mask char-mode impl number-threads chunk-size)
                       (if err
                           (progn
                             (format *error-output* "wc: -: ~a~%" err)
@@ -89,7 +90,7 @@
                     (let ((fd (sb-posix:open path sb-posix:o-rdonly)))
                       (unwind-protect
                            (multiple-value-bind (l w c b err)
-                               (process-fd fd dispatch-mask char-mode implementation number-threads chunk-size)
+                               (process-fd fd dispatch-mask char-mode impl number-threads chunk-size)
                              (if err
                                  (progn
                                    (format *error-output* "wc: ~a: ~a~%" path err)

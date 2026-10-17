@@ -205,17 +205,25 @@
              (type (unsigned-byte 64) prev-was-ed)
              (optimize (speed 3) (safety 0))
              (sb-ext:muffle-conditions sb-ext:compiler-note))
-    (let* ((ascii    (mask64-bits (avx512bw:u8.64-mask= (avx512bw:u8.64-and chunk v80) v0)))
-           (vlead-lo (mask64-bits (avx512bw:u8.64-mask>= chunk v194)))
-           (vlead-hi (mask64-bits (avx512bw:u8.64-mask<= chunk v244)))
-           (vlead    (logand vlead-lo vlead-hi))
-           (ed       (mask64-bits (avx512bw:u8.64-mask= chunk ved)))
-           (ed-prev  (logior (ldb (byte 64 0) (ash ed 1)) prev-was-ed))
-           (foll-lo  (mask64-bits (avx512bw:u8.64-mask>= chunk va0)))
-           (foll-hi  (mask64-bits (avx512bw:u8.64-mask<= chunk vbf)))
-           (foll     (logand foll-lo foll-hi))
-           (bad      (logand ed-prev foll))
-           (valid    (logandc2 (logior ascii vlead) bad)))
-      (values valid ed))))
+    (let* ((ascii-bits (mask64-bits
+                        (avx512bw:u8.64-mask=
+                         (avx512bw:u8.64-and chunk v80)
+                         v0)))
+           (vlead-bits (mask64-bits
+                        (avx512bw:m8.64-and
+                         (avx512bw:u8.64-mask>= chunk v194)
+                         (avx512bw:u8.64-mask<= chunk v244))))
+           (ed-bits    (mask64-bits
+                        (avx512bw:u8.64-mask= chunk ved)))
+           (ed-shift   (logior (ldb (byte 64 0) (ash ed-bits 1)) prev-was-ed))
+           (foll-bits  (mask64-bits
+                        (avx512bw:m8.64-and
+                         (avx512bw:u8.64-mask>= chunk va0)
+                         (avx512bw:u8.64-mask<= chunk vbf))))
+           (bad-bits   (logand ed-shift foll-bits))
+           (valid-bits (logandc2 (logior ascii-bits vlead-bits) bad-bits)))
+      (declare (type (unsigned-byte 64)
+                     ascii-bits vlead-bits ed-bits ed-shift foll-bits bad-bits valid-bits))
+      (values valid-bits ed-bits))))
 
 ;;; kernels/common.cl ends here
