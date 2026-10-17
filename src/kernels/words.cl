@@ -50,57 +50,66 @@
 
 ;;; AVX2 implementation
 
-(defun count-words-ascii (sap size ws-init-state)
-  (declare (type fixnum size)
-           (type (unsigned-byte 8) ws-init-state)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (loop
-    with loop-end of-type fixnum = (logandc2 size 127)
-    for i of-type fixnum from 0 below loop-end by 128
-    with 0x0 of-type u8.32 = (u8.32 #x00)
-    with 0x20 of-type u8.32 = (u8.32 #x20)
-    with a1 of-type u64.4 = (u64.4 0)
-    with a2 of-type u64.4 = (u64.4 0)
-    with a3 of-type u64.4 = (u64.4 0)
-    with a4 of-type u64.4 = (u64.4 0)
-    with ws-prev of-type u8.32 = (u8.32 ws-init-state)
-    for c1 = (u8.32-sap-ref sap (+ i 0))
-    for c2 = (u8.32-sap-ref sap (+ i 32))
-    for c3 = (u8.32-sap-ref sap (+ i 64))
-    for c4 = (u8.32-sap-ref sap (+ i 96))
-    do
-       (macrolet ((process-chunk (curr prev)
-                    `(let* ((curr ,curr) (prev ,prev))
-                       (let* ((ctrl (u8.32-sat- (u8.32- curr 9) 4))
-                              (ws   (u8.32-or (u8.32= ctrl 0x0) (u8.32= curr 0x20)))
-                              (ws-shift (u8.32-alignr ws (u8.32-permute128 prev ws #x21) 15))
-                              (wmask    (u8.32-andc1 ws ws-shift)))
-                         (values wmask ws)))))
-         (multiple-value-bind (wmask prev) (process-chunk c1 ws-prev)
-           (setf a1 (u64.4+ a1 (u8.32-sad wmask 0x0)) ws-prev prev))
-         (multiple-value-bind (wmask prev) (process-chunk c2 ws-prev)
-           (setf a2 (u64.4+ a2 (u8.32-sad wmask 0x0)) ws-prev prev))
-         (multiple-value-bind (wmask prev) (process-chunk c3 ws-prev)
-           (setf a3 (u64.4+ a3 (u8.32-sad wmask 0x0)) ws-prev prev))
-         (multiple-value-bind (wmask prev) (process-chunk c4 ws-prev)
-           (setf a4 (u64.4+ a4 (u8.32-sad wmask 0x0)) ws-prev prev)))
-    finally
-       (return
-         (loop for j from loop-end below size
-               with tail of-type fixnum  = 0
-               with words of-type fixnum = (sum-lanes (u64.4+ a1 a2 a3 a4))
-               with prev of-type boolean = (logbitp 31 (u8.32-movemask ws-prev))
-               for byte = (sb-sys:sap-ref-8 sap j)
-               for curr = (or (= byte 32) (<= 9 byte 13))
-               do
-                  (and prev (not curr) (incf tail))
-                  (setf prev curr)
-               finally
-                  (return (values nil (the fixnum (+ words tail)) nil))))))
+#+avx2
+(progn
+  (defun count-words-ascii (sap size ws-init-state)
+    (declare (type fixnum size)
+             (type (unsigned-byte 8) ws-init-state)
+             (type sb-sys:system-area-pointer sap)
+             (optimize (speed 3) (safety 0)))
+    (loop
+      with loop-end of-type fixnum = (logandc2 size 127)
+      for i of-type fixnum from 0 below loop-end by 128
+      with 0x0 of-type u8.32 = (u8.32 #x00)
+      with 0x20 of-type u8.32 = (u8.32 #x20)
+      with a1 of-type u64.4 = (u64.4 0)
+      with a2 of-type u64.4 = (u64.4 0)
+      with a3 of-type u64.4 = (u64.4 0)
+      with a4 of-type u64.4 = (u64.4 0)
+      with ws-prev of-type u8.32 = (u8.32 ws-init-state)
+      for c1 = (u8.32-sap-ref sap (+ i 0))
+      for c2 = (u8.32-sap-ref sap (+ i 32))
+      for c3 = (u8.32-sap-ref sap (+ i 64))
+      for c4 = (u8.32-sap-ref sap (+ i 96))
+      do
+         (macrolet ((process-chunk (curr prev)
+                      `(let* ((curr ,curr) (prev ,prev))
+                         (let* ((ctrl (u8.32-sat- (u8.32- curr 9) 4))
+                                (ws   (u8.32-or (u8.32= ctrl 0x0) (u8.32= curr 0x20)))
+                                (ws-shift (u8.32-alignr ws (u8.32-permute128 prev ws #x21) 15))
+                                (wmask    (u8.32-andc1 ws ws-shift)))
+                           (values wmask ws)))))
+           (multiple-value-bind (wmask prev) (process-chunk c1 ws-prev)
+             (setf a1 (u64.4+ a1 (u8.32-sad wmask 0x0)) ws-prev prev))
+           (multiple-value-bind (wmask prev) (process-chunk c2 ws-prev)
+             (setf a2 (u64.4+ a2 (u8.32-sad wmask 0x0)) ws-prev prev))
+           (multiple-value-bind (wmask prev) (process-chunk c3 ws-prev)
+             (setf a3 (u64.4+ a3 (u8.32-sad wmask 0x0)) ws-prev prev))
+           (multiple-value-bind (wmask prev) (process-chunk c4 ws-prev)
+             (setf a4 (u64.4+ a4 (u8.32-sad wmask 0x0)) ws-prev prev)))
+      finally
+         (return
+           (loop for j from loop-end below size
+                 with tail of-type fixnum  = 0
+                 with words of-type fixnum = (sum-lanes (u64.4+ a1 a2 a3 a4))
+                 with prev of-type boolean = (logbitp 31 (u8.32-movemask ws-prev))
+                 for byte = (sb-sys:sap-ref-8 sap j)
+                 for curr = (or (= byte 32) (<= 9 byte 13))
+                 do
+                    (and prev (not curr) (incf tail))
+                    (setf prev curr)
+                 finally
+                    (return (values nil (the fixnum (+ words tail)) nil))))))
 
-(defun count-words-utf8 (sap size ws-init-state)
-  (count-words-ascii sap size ws-init-state))
+  (defun count-words-utf8 (sap size ws-init-state)
+    (count-words-ascii sap size ws-init-state)))
+
+#-avx2
+(progn
+  (defun count-words-ascii (sap size ws-init-state)
+    (count-words-ascii-generic sap size ws-init-state))
+  (defun count-words-utf8 (sap size ws-init-state)
+    (count-words-utf8-generic sap size ws-init-state)))
 
 
 ;;; AVX-512 implementation

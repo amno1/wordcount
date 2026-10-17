@@ -41,51 +41,60 @@
 
 ;;; AVX2 implementation
 
-(defun count-lines-ascii (sap size)
-  (declare (type fixnum size)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (loop
-    with loop-end of-type fixnum = (logandc2 size 255)
-    for i of-type fixnum from 0 below loop-end by 256
-    with 0x0A of-type u8.32 = (u8.32 #x0A)
-    with 0x0  of-type u8.32 = (u8.32 #x00)
-    with a1 of-type u64.4 = (u64.4 0)
-    with a2 of-type u64.4 = (u64.4 0)
-    with a3 of-type u64.4 = (u64.4 0)
-    with a4 of-type u64.4 = (u64.4 0)
-    with a5 of-type u64.4 = (u64.4 0)
-    with a6 of-type u64.4 = (u64.4 0)
-    with a7 of-type u64.4 = (u64.4 0)
-    with a8 of-type u64.4 = (u64.4 0)
+#+avx2
+(progn
+  (defun count-lines-ascii (sap size)
+    (declare (type fixnum size)
+             (type sb-sys:system-area-pointer sap)
+             (optimize (speed 3) (safety 0)))
+    (loop
+      with loop-end of-type fixnum = (logandc2 size 255)
+      for i of-type fixnum from 0 below loop-end by 256
+      with 0x0A of-type u8.32 = (u8.32 #x0A)
+      with 0x0  of-type u8.32 = (u8.32 #x00)
+      with a1 of-type u64.4 = (u64.4 0)
+      with a2 of-type u64.4 = (u64.4 0)
+      with a3 of-type u64.4 = (u64.4 0)
+      with a4 of-type u64.4 = (u64.4 0)
+      with a5 of-type u64.4 = (u64.4 0)
+      with a6 of-type u64.4 = (u64.4 0)
+      with a7 of-type u64.4 = (u64.4 0)
+      with a8 of-type u64.4 = (u64.4 0)
 
-    for c1 of-type u8.32 = (u8.32-sap-ref sap (+ i 0))
-    for c2 of-type u8.32 = (u8.32-sap-ref sap (+ i 32))
-    for c3 of-type u8.32 = (u8.32-sap-ref sap (+ i 64))
-    for c4 of-type u8.32 = (u8.32-sap-ref sap (+ i 96))
-    for c5 of-type u8.32 = (u8.32-sap-ref sap (+ i 128))
-    for c6 of-type u8.32 = (u8.32-sap-ref sap (+ i 160))
-    for c7 of-type u8.32 = (u8.32-sap-ref sap (+ i 192))
-    for c8 of-type u8.32 = (u8.32-sap-ref sap (+ i 224))
-    do
-       (setf a1 (u64.4+ a1 (u8.32-sad (u8.32= c1 0x0A) 0x0)))
-       (setf a2 (u64.4+ a2 (u8.32-sad (u8.32= c2 0x0A) 0x0)))
-       (setf a3 (u64.4+ a3 (u8.32-sad (u8.32= c3 0x0A) 0x0)))
-       (setf a4 (u64.4+ a4 (u8.32-sad (u8.32= c4 0x0A) 0x0)))
-       (setf a5 (u64.4+ a5 (u8.32-sad (u8.32= c5 0x0A) 0x0)))
-       (setf a6 (u64.4+ a6 (u8.32-sad (u8.32= c6 0x0A) 0x0)))
-       (setf a7 (u64.4+ a7 (u8.32-sad (u8.32= c7 0x0A) 0x0)))
-       (setf a8 (u64.4+ a8 (u8.32-sad (u8.32= c8 0x0A) 0x0)))
-    finally
-       (let* ((sum (u64.4+ a1 a2 a3 a4 a5 a6 a7 a8))
-              (lines (sum-lanes sum))
-              (tail  (loop for j from loop-end below size
-                           count (= (sb-sys:sap-ref-8 sap j) 10))))
-         (declare (type fixnum lines tail))
-         (return (values (the fixnum (+ lines tail)) nil nil)))))
+      for c1 of-type u8.32 = (u8.32-sap-ref sap (+ i 0))
+      for c2 of-type u8.32 = (u8.32-sap-ref sap (+ i 32))
+      for c3 of-type u8.32 = (u8.32-sap-ref sap (+ i 64))
+      for c4 of-type u8.32 = (u8.32-sap-ref sap (+ i 96))
+      for c5 of-type u8.32 = (u8.32-sap-ref sap (+ i 128))
+      for c6 of-type u8.32 = (u8.32-sap-ref sap (+ i 160))
+      for c7 of-type u8.32 = (u8.32-sap-ref sap (+ i 192))
+      for c8 of-type u8.32 = (u8.32-sap-ref sap (+ i 224))
+      do
+         (setf a1 (u64.4+ a1 (u8.32-sad (u8.32= c1 0x0A) 0x0)))
+         (setf a2 (u64.4+ a2 (u8.32-sad (u8.32= c2 0x0A) 0x0)))
+         (setf a3 (u64.4+ a3 (u8.32-sad (u8.32= c3 0x0A) 0x0)))
+         (setf a4 (u64.4+ a4 (u8.32-sad (u8.32= c4 0x0A) 0x0)))
+         (setf a5 (u64.4+ a5 (u8.32-sad (u8.32= c5 0x0A) 0x0)))
+         (setf a6 (u64.4+ a6 (u8.32-sad (u8.32= c6 0x0A) 0x0)))
+         (setf a7 (u64.4+ a7 (u8.32-sad (u8.32= c7 0x0A) 0x0)))
+         (setf a8 (u64.4+ a8 (u8.32-sad (u8.32= c8 0x0A) 0x0)))
+      finally
+         (let* ((sum (u64.4+ a1 a2 a3 a4 a5 a6 a7 a8))
+                (lines (sum-lanes sum))
+                (tail  (loop for j from loop-end below size
+                             count (= (sb-sys:sap-ref-8 sap j) 10))))
+           (declare (type fixnum lines tail))
+           (return (values (the fixnum (+ lines tail)) nil nil)))))
 
-(defun count-lines-utf8 (sap size)
-  (count-lines-ascii sap size))
+  (defun count-lines-utf8 (sap size)
+    (count-lines-ascii sap size)))
+
+#-avx2
+(progn
+  (defun count-lines-ascii (sap size)
+    (count-lines-ascii-generic sap size))
+  (defun count-lines-utf8 (sap size)
+    (count-lines-utf8-generic sap size)))
 
 
 ;;; AVX-512 implementation

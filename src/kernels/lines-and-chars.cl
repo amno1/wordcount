@@ -43,141 +43,150 @@
 (defun count-lines-and-chars-ascii (sap size)
   (values (count-lines-ascii sap size) nil size))
 
-(defun count-lines-and-chars-utf8 (sap size)
-  (declare (type fixnum size)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (loop
-    with loop-end of-type fixnum = (logandc2 size 127)
-    for i of-type fixnum from 0 below loop-end by 128
+#+avx2
+(progn
+  (defun count-lines-and-chars-utf8 (sap size)
+    (declare (type fixnum size)
+             (type sb-sys:system-area-pointer sap)
+             (optimize (speed 3) (safety 0)))
+    (loop
+      with loop-end of-type fixnum = (logandc2 size 127)
+      for i of-type fixnum from 0 below loop-end by 128
 
-    ;; masks
-    with 0x0  of-type u8.32 = (u8.32 #x00)
-    with 0xFF of-type u8.32 = (u8.32 #xFF)
-    with 0xC0 of-type u8.32 = (u8.32 #xC0)
-    with 0x80 of-type u8.32 = (u8.32 #x80)
-    with 0x0A of-type u8.32 = (u8.32 #x0A)
+      ;; masks
+      with 0x0  of-type u8.32 = (u8.32 #x00)
+      with 0xFF of-type u8.32 = (u8.32 #xFF)
+      with 0xC0 of-type u8.32 = (u8.32 #xC0)
+      with 0x80 of-type u8.32 = (u8.32 #x80)
+      with 0x0A of-type u8.32 = (u8.32 #x0A)
 
-    ;; accumulators
-    with la of-type u64.4 = (u64.4 0)
-    with ca of-type u64.4 = (u64.4 0)
+      ;; accumulators
+      with la of-type u64.4 = (u64.4 0)
+      with ca of-type u64.4 = (u64.4 0)
 
-    ;; chunks
-    for c1 = (u8.32-sap-ref sap (+ i 0))
-    for c2 = (u8.32-sap-ref sap (+ i 32))
-    for c3 = (u8.32-sap-ref sap (+ i 64))
-    for c4 = (u8.32-sap-ref sap (+ i 96))
+      ;; chunks
+      for c1 = (u8.32-sap-ref sap (+ i 0))
+      for c2 = (u8.32-sap-ref sap (+ i 32))
+      for c3 = (u8.32-sap-ref sap (+ i 64))
+      for c4 = (u8.32-sap-ref sap (+ i 96))
 
-    do
-       (macrolet ((process-chunk (c)
-                    `(let* ((c ,c))
-                       (let* ((linep (u8.32= c 0x0A))
-                              (contp (u8.32= (u8.32-and c 0xC0) 0x80))
-                              (charp (u8.32-andc1 contp 0xFF)))
-                         (values (u8.32-sad linep 0x0) (u8.32-sad charp 0x0))))))
+      do
+         (macrolet ((process-chunk (c)
+                      `(let* ((c ,c))
+                         (let* ((linep (u8.32= c 0x0A))
+                                (contp (u8.32= (u8.32-and c 0xC0) 0x80))
+                                (charp (u8.32-andc1 contp 0xFF)))
+                           (values (u8.32-sad linep 0x0) (u8.32-sad charp 0x0))))))
 
-         (multiple-value-bind (l c) (process-chunk c1)
-           (psetf la (u64.4+ la l) ca (u64.4+ ca c)))
-         (multiple-value-bind (l c) (process-chunk c2)
-           (psetf la (u64.4+ la l) ca (u64.4+ ca c)))
-         (multiple-value-bind (l c) (process-chunk c3)
-           (psetf la (u64.4+ la l) ca (u64.4+ ca c)))
-         (multiple-value-bind (l c) (process-chunk c4)
-           (psetf la (u64.4+ la l) ca (u64.4+ ca c))))
+           (multiple-value-bind (l c) (process-chunk c1)
+             (psetf la (u64.4+ la l) ca (u64.4+ ca c)))
+           (multiple-value-bind (l c) (process-chunk c2)
+             (psetf la (u64.4+ la l) ca (u64.4+ ca c)))
+           (multiple-value-bind (l c) (process-chunk c3)
+             (psetf la (u64.4+ la l) ca (u64.4+ ca c)))
+           (multiple-value-bind (l c) (process-chunk c4)
+             (psetf la (u64.4+ la l) ca (u64.4+ ca c))))
 
-    finally
-       (let* ((lines (sum-lanes la))
-              (chars (sum-lanes ca))
-              (tlines 0) (tchars 0))
-         (declare (type fixnum lines chars tlines tchars))
+      finally
+         (let* ((lines (sum-lanes la))
+                (chars (sum-lanes ca))
+                (tlines 0) (tchars 0))
+           (declare (type fixnum lines chars tlines tchars))
 
-         (loop for j from loop-end below size
-               for byte = (sb-sys:sap-ref-8 sap j)
-               do
-                  (when (= byte 10) (incf tlines))
-                  (when (/= (logand byte #xC0) #x80) (incf tchars)))
-
-         (return (values (the fixnum (+ lines tlines))
-                         nil
-                         (the fixnum (+ chars tchars)))))))
-
-(defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
-  (declare (type fixnum size)
-           (type (unsigned-byte 8) ed-init-state)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (loop
-    with loop-end of-type fixnum = (logandc2 size 127)
-    for i of-type fixnum from 0 below loop-end by 128
-
-    ;; masks
-    with 0x0  of-type u8.32 = (u8.32 #x00)
-    with 0x0A of-type u8.32 = (u8.32 #x0A)
-    with 0x80 of-type u8.32 = (u8.32 #x80)
-    with 0xED of-type u8.32 = (u8.32 #xED)
-
-    ;; accumulators
-    with la of-type u64.4 = (u64.4 0)
-    with ca of-type u64.4 = (u64.4 0)
-
-    ;; Carry
-    with ed-prev of-type u8.32 = (u8.32 (if (zerop ed-init-state) 0 #xFF))
-
-    for p1 = (u8.32-sap-ref sap (+ i 0))
-    for p2 = (u8.32-sap-ref sap (+ i 32))
-    for p3 = (u8.32-sap-ref sap (+ i 64))
-    for p4 = (u8.32-sap-ref sap (+ i 96))
-
-    do
-       (macrolet ((process-chunk (chunk prev-ed)
-                    `(let* ((chunk ,chunk) (prev-ed ,prev-ed))
-                       (let* ((line  (u8.32= chunk 0x0A))
-                              (ascii (u8.32= (u8.32-and chunk 0x80) 0x0))
-                              (vlead (u8.32= (u8.32-sat- (u8.32- chunk 194) 50) 0x0))
-                              (ed    (u8.32= chunk 0xED))
-                              (ed-shift (u8.32-alignr ed (u8.32-permute128 prev-ed ed #x21) 15))
-                              (foll  (u8.32= (u8.32-sat- (u8.32- chunk #xA0) 31) 0x0))
-                              (bad   (u8.32-and ed-shift foll))
-                              (valid (u8.32-andc1 bad (u8.32-or ascii vlead))))
-                         (values line valid ed)))))
-
-         (multiple-value-bind (lm cm ed) (process-chunk p1 ed-prev)
-           (setf la (u64.4+ la (u8.32-sad lm 0x0))
-                 ca (u64.4+ ca (u8.32-sad cm 0x0))
-                 ed-prev ed))
-         (multiple-value-bind (lm cm ed) (process-chunk p2 ed-prev)
-           (setf la (u64.4+ la (u8.32-sad lm 0x0))
-                 ca (u64.4+ ca (u8.32-sad cm 0x0))
-                 ed-prev ed))
-         (multiple-value-bind (lm cm ed) (process-chunk p3 ed-prev)
-           (setf la (u64.4+ la (u8.32-sad lm 0x0))
-                 ca (u64.4+ ca (u8.32-sad cm 0x0))
-                 ed-prev ed))
-         (multiple-value-bind (lm cm ed) (process-chunk p4 ed-prev)
-           (setf la (u64.4+ la (u8.32-sad lm 0x0))
-                 ca (u64.4+ ca (u8.32-sad cm 0x0))
-                 ed-prev ed)))
-
-    finally
-       (let* ((lines (sum-lanes la))
-              (chars (sum-lanes ca))
-              (prev  (logbitp 31 (u8.32-movemask ed-prev)))
-              (tlines 0) (tchars 0))
-         (declare (type fixnum lines chars tlines tchars))
-
-         (loop for j from loop-end below size
-               for byte = (sb-sys:sap-ref-8 sap j)
-               do (let* ((ascii (<= 0 byte 127))
-                         (vlead (<= 194 byte 244))
-                         (ed    (= byte #xED))
-                         (bad   (and prev (<= #xA0 byte #xBF))))
+           (loop for j from loop-end below size
+                 for byte = (sb-sys:sap-ref-8 sap j)
+                 do
                     (when (= byte 10) (incf tlines))
-                    (when (and (or ascii vlead) (not bad)) (incf tchars))
-                    (setf prev ed)))
+                    (when (/= (logand byte #xC0) #x80) (incf tchars)))
 
-         (return (values (the fixnum (+ lines tlines))
-                         nil
-                         (the fixnum (+ chars tchars)))))))
+           (return (values (the fixnum (+ lines tlines))
+                           nil
+                           (the fixnum (+ chars tchars)))))))
+
+  (defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
+    (declare (type fixnum size)
+             (type (unsigned-byte 8) ed-init-state)
+             (type sb-sys:system-area-pointer sap)
+             (optimize (speed 3) (safety 0)))
+    (loop
+      with loop-end of-type fixnum = (logandc2 size 127)
+      for i of-type fixnum from 0 below loop-end by 128
+
+      ;; masks
+      with 0x0  of-type u8.32 = (u8.32 #x00)
+      with 0x0A of-type u8.32 = (u8.32 #x0A)
+      with 0x80 of-type u8.32 = (u8.32 #x80)
+      with 0xED of-type u8.32 = (u8.32 #xED)
+
+      ;; accumulators
+      with la of-type u64.4 = (u64.4 0)
+      with ca of-type u64.4 = (u64.4 0)
+
+      ;; Carry
+      with ed-prev of-type u8.32 = (u8.32 (if (zerop ed-init-state) 0 #xFF))
+
+      for p1 = (u8.32-sap-ref sap (+ i 0))
+      for p2 = (u8.32-sap-ref sap (+ i 32))
+      for p3 = (u8.32-sap-ref sap (+ i 64))
+      for p4 = (u8.32-sap-ref sap (+ i 96))
+
+      do
+         (macrolet ((process-chunk (chunk prev-ed)
+                      `(let* ((chunk ,chunk) (prev-ed ,prev-ed))
+                         (let* ((line  (u8.32= chunk 0x0A))
+                                (ascii (u8.32= (u8.32-and chunk 0x80) 0x0))
+                                (vlead (u8.32= (u8.32-sat- (u8.32- chunk 194) 50) 0x0))
+                                (ed    (u8.32= chunk 0xED))
+                                (ed-shift (u8.32-alignr ed (u8.32-permute128 prev-ed ed #x21) 15))
+                                (foll  (u8.32= (u8.32-sat- (u8.32- chunk #xA0) 31) 0x0))
+                                (bad   (u8.32-and ed-shift foll))
+                                (valid (u8.32-andc1 bad (u8.32-or ascii vlead))))
+                           (values line valid ed)))))
+
+           (multiple-value-bind (lm cm ed) (process-chunk p1 ed-prev)
+             (setf la (u64.4+ la (u8.32-sad lm 0x0))
+                   ca (u64.4+ ca (u8.32-sad cm 0x0))
+                   ed-prev ed))
+           (multiple-value-bind (lm cm ed) (process-chunk p2 ed-prev)
+             (setf la (u64.4+ la (u8.32-sad lm 0x0))
+                   ca (u64.4+ ca (u8.32-sad cm 0x0))
+                   ed-prev ed))
+           (multiple-value-bind (lm cm ed) (process-chunk p3 ed-prev)
+             (setf la (u64.4+ la (u8.32-sad lm 0x0))
+                   ca (u64.4+ ca (u8.32-sad cm 0x0))
+                   ed-prev ed))
+           (multiple-value-bind (lm cm ed) (process-chunk p4 ed-prev)
+             (setf la (u64.4+ la (u8.32-sad lm 0x0))
+                   ca (u64.4+ ca (u8.32-sad cm 0x0))
+                   ed-prev ed)))
+
+      finally
+         (let* ((lines (sum-lanes la))
+                (chars (sum-lanes ca))
+                (prev  (logbitp 31 (u8.32-movemask ed-prev)))
+                (tlines 0) (tchars 0))
+           (declare (type fixnum lines chars tlines tchars))
+
+           (loop for j from loop-end below size
+                 for byte = (sb-sys:sap-ref-8 sap j)
+                 do (let* ((ascii (<= 0 byte 127))
+                           (vlead (<= 194 byte 244))
+                           (ed    (= byte #xED))
+                           (bad   (and prev (<= #xA0 byte #xBF))))
+                      (when (= byte 10) (incf tlines))
+                      (when (and (or ascii vlead) (not bad)) (incf tchars))
+                      (setf prev ed)))
+
+           (return (values (the fixnum (+ lines tlines))
+                           nil
+                           (the fixnum (+ chars tchars))))))))
+
+#-avx2
+(progn
+  (defun count-lines-and-chars-utf8 (sap size)
+    (count-lines-and-chars-utf8-generic sap size))
+  (defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
+    (count-lines-and-chars-utf8-strict-generic sap size ed-init-state)))
 
 
 ;;; AVX-512 implementation

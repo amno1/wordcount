@@ -293,16 +293,16 @@ Returns (VALUES LINES WORDS CHARS BYTES ERROR)."
       ((and cur end (>= cur 0) (>= end 0) (> end cur))
        (let ((size (- end cur)))
          (declare (type fixnum size))
+         (sb-posix:lseek fd cur sb-posix:seek-set)
          ;; Fast path: if dispatch-mask is 0, we only care about bytes and file size is known!
          (if (zerop dispatch-mask)
              (values 0 0 0 size nil)
-             (progn
-               (sb-posix:lseek fd cur sb-posix:seek-set)
-               (if (or (<= nthreads 1) (< size (* 8 1024 1024)))
-                   (process-fd-linear fd dispatch-mask char-mode implementation buf-size)
-                   (process-fd-mt fd size nthreads dispatch-mask char-mode implementation buf-size))))))
+             (if (or (<= nthreads 1) (< size (* 8 1024 1024)))
+                 (process-fd-linear fd dispatch-mask char-mode implementation buf-size)
+                 (process-fd-mt fd size nthreads dispatch-mask char-mode implementation buf-size)))))
       ;; Empty file
       ((and cur end (= cur end))
+       (sb-posix:lseek fd cur sb-posix:seek-set)
        (values 0 0 0 0 nil))
       ;; Non-seekable stream (stdin, pipes, sockets)
       (t

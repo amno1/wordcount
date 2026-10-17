@@ -115,19 +115,21 @@
 
 ;;; AVX2 helpers
 
-(declaim (inline sum-lanes))
-(defun sum-lanes (acc)
-  (declare (type u64.4 acc))
-  (let* ((lo (u64.2-from-u64.4 acc 0))
-         (hi (u64.2-from-u64.4 acc 1))
-         (sum (u64.2+ lo hi))
-         (max most-positive-fixnum))
-    (declare (type u64.2 lo hi sum))
-    (the fixnum
-         (truncate
-          (+ (logand (sse4.1:u64.2-elt sum 0) max)
-             (logand (sse4.1:u64.2-elt sum 1) max))
-          255))))
+#+avx2
+(progn
+  (declaim (inline sum-lanes))
+  (defun sum-lanes (acc)
+    (declare (type u64.4 acc))
+    (let* ((lo (u64.2-from-u64.4 acc 0))
+           (hi (u64.2-from-u64.4 acc 1))
+           (sum (u64.2+ lo hi))
+           (max most-positive-fixnum))
+      (declare (type u64.2 lo hi sum))
+      (the fixnum
+           (truncate
+            (+ (logand (sse4.1:u64.2-elt sum 0) max)
+               (logand (sse4.1:u64.2-elt sum 1) max))
+            255)))))
 
 
 ;;; AVX-512 helpers

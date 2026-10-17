@@ -39,15 +39,26 @@
   "REQUESTED is :GENERIC, :AVX2, :AVX512, :AUTO, or NIL (pick the fastest
    implementation this binary was built with). Returns the concrete
    implementation to use, falling back from :AVX512 to :AVX2 (with a warning)
-   when this binary has no AVX-512 support."
+   when this binary has no AVX-512 support, and from :AVX2 to :GENERIC when
+   no AVX2 support."
   (case requested
-    ((nil :auto) #+avx512 :avx512 #-avx512 :avx2)
+    ((nil :auto)
+     #+avx512 :avx512
+     #+(and avx2 (not avx512)) :avx2
+     #-(or avx2 avx512) :generic)
     (:avx512
      #+avx512 :avx512
      #-avx512 (progn
                 (format *error-output*
-                        "wc: --implementation avx512 requested, but this build has no AVX-512 support -- falling back to avx2~%")
-                :avx2))
+                        "wc: --implementation avx512 requested, but this build has no AVX-512 support -- falling back to ~a~%"
+                        #+avx2 "avx2" #-avx2 "generic")
+                #+avx2 :avx2 #-avx2 :generic))
+    (:avx2
+     #+avx2 :avx2
+     #-avx2 (progn
+              (format *error-output*
+                      "wc: --implementation avx2 requested, but this build has no AVX2 support -- falling back to generic~%")
+              :generic))
     (t requested)))
 
 

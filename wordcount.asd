@@ -4,9 +4,13 @@
       (:use :common-lisp :asdf))))
 
 #+sbcl
-(when (member :avx512 (symbol-value 'sb-impl:+internal-features+))
-  (unless (uiop:getenv "WC_NO_SIMD")
-    (pushnew :avx512 *features*)))
+(progn
+  (when (member :avx2 (symbol-value 'sb-impl:+internal-features+))
+    (unless (uiop:getenv "WC_NO_SIMD")
+      (pushnew :avx2 *features*)))
+  (when (member :avx512 (symbol-value 'sb-impl:+internal-features+))
+    (unless (uiop:getenv "WC_NO_SIMD")
+      (pushnew :avx512 *features*))))
 
 (in-package :wordcount.system)
 

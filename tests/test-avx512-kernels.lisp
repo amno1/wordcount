@@ -21,9 +21,13 @@
 ;; own eval-when, which this standalone test never loads. Add it here
 ;; so packages.cl sees the same feature it would under the real build.
 #+sbcl
-(when (member :avx512 (symbol-value 'sb-impl:+internal-features+))
-  (unless (uiop:getenv "WC_NO_SIMD")
-    (pushnew :avx512 *features*)))
+(progn
+  (when (member :avx2 (symbol-value 'sb-impl:+internal-features+))
+    (unless (uiop:getenv "WC_NO_SIMD")
+      (pushnew :avx2 *features*)))
+  (when (member :avx512 (symbol-value 'sb-impl:+internal-features+))
+    (unless (uiop:getenv "WC_NO_SIMD")
+      (pushnew :avx512 *features*))))
 
 ;; packages.cl :uses with-user-abort just for a condition type we don't
 ;; need for these correctness checks; stub it so packages.cl loads.
@@ -98,7 +102,8 @@
            (with-sap-from-bytes (sap bytes)
              (let ((expected (multiple-value-list
                               (apply (gethash ',base-name *avx2-refs*) sap (length bytes) more-args))))
-               (and (equal expected (multiple-value-list (apply #',avx512 sap (length bytes) more-args)))
+               (and (or (not (fboundp ',avx512))
+                        (equal expected (multiple-value-list (apply (fdefinition ',avx512) sap (length bytes) more-args))))
                     (equal expected (multiple-value-list (apply #',generic sap (length bytes) more-args))))))))
        (parachute:define-test ,base-name
          (dolist (id ,case-ids)
@@ -299,7 +304,21 @@
     (parachute:is eql t (> l 0))
     (parachute:is eql t (> w 0))
     (parachute:is eql t (> c 0))
-    (parachute:is = b (nth-value 3 (count-lines "wordcount.asd")))))
+    (parachute:is = b (nth-value 3 (count-lines "wordcount.asd"))))
+  ;; FD tier: count-bytes-fd must preserve file offset on seekable files
+  (let ((fd (sb-posix:open "wordcount.asd" sb-posix:o-rdonly)))
+    (unwind-protect
+         (progn
+           (parachute:is = 0 (sb-posix:lseek fd 0 sb-posix:seek-cur))
+           (multiple-value-bind (l w c b err) (count-bytes-fd fd)
+             (parachute:is eql t (null err))
+             (parachute:is = 0 l)
+             (parachute:is = 0 w)
+             (parachute:is = 0 c)
+             (parachute:is eql t (> b 0))
+             ;; Crucial check: fd offset must not have been moved to EOF
+             (parachute:is = 0 (sb-posix:lseek fd 0 sb-posix:seek-cur))))
+      (sb-posix:close fd))))
 
 (let ((result (parachute:test :wc)))
   (sb-ext:exit :code (if (eq (parachute:status result) :passed) 0 1)))
