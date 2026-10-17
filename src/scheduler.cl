@@ -38,7 +38,7 @@
   (actual-buf-size 0 :type fixnum)
   (nthreads 0 :type fixnum)
   (dispatch-mask 0 :type (unsigned-byte 3))
-  (char-mode nil :type (member nil :bytes :chars :chars-strict))
+  (char-mode nil :type (member nil :chars :chars-strict))
   (implementation :avx2 :type (member :generic :avx2 :avx512)))
 
 (defstruct (worker (:constructor make-worker))
@@ -80,7 +80,7 @@
         (t-lines 0) (t-words 0) (t-chars 0))
     (declare (type fixnum my-tid fd size blocks actual-buf-size nthreads t-lines t-words t-chars)
              (type (unsigned-byte 3) dispatch-mask)
-             (type (member nil :bytes :chars :chars-strict) char-mode)
+             (type (member nil :chars :chars-strict) char-mode)
              (type sb-sys:system-area-pointer buf-sap))
     (loop for block of-type fixnum from my-tid below blocks by nthreads
           do (let* ((offset (* block actual-buf-size))
@@ -182,7 +182,7 @@
 (defun process-fd-linear (fd dispatch-mask char-mode implementation &optional (buf-size +default-chunk-size+))
   (declare (type fixnum fd buf-size)
            (type (unsigned-byte 3) dispatch-mask)
-           (type (member nil :bytes :chars :chars-strict) char-mode)
+           (type (member nil :chars :chars-strict) char-mode)
            (type (member :generic :avx2 :avx512) implementation))
   (let* ((actual-buf-size (max 64 buf-size))
          (alloc-size (round-up-64 (+ actual-buf-size 64)))
@@ -218,7 +218,7 @@
                       &optional (buf-size +default-chunk-size+))
   (declare (type fixnum fd size nthreads buf-size)
            (type (unsigned-byte 3) dispatch-mask)
-           (type (member nil :bytes :chars :chars-strict) char-mode)
+           (type (member nil :chars :chars-strict) char-mode)
            (type (member :generic :avx2 :avx512) implementation))
   (sb-posix:posix-fadvise fd 0 size 2) ;; POSIX_FADV_SEQUENTIAL
   (let* ((actual-buf-size (max 64 buf-size))
@@ -284,7 +284,7 @@
 Returns (VALUES LINES WORDS CHARS BYTES ERROR)."
   (declare (type fixnum fd nthreads buf-size)
            (type (unsigned-byte 3) dispatch-mask)
-           (type (member nil :bytes :chars :chars-strict) char-mode)
+           (type (member nil :chars :chars-strict) char-mode)
            (type (member :generic :avx2 :avx512) implementation))
   (let* ((cur (ignore-errors (sb-posix:lseek fd 0 sb-posix:seek-cur)))
          (end (ignore-errors (sb-posix:lseek fd 0 sb-posix:seek-end))))

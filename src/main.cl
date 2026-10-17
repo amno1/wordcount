@@ -57,10 +57,6 @@
           (when (and (null files) (cli-config-files0-from-supplied-p cfg))
             (sb-ext:exit :code 0))
 
-          (when debug
-            (format *error-output* "wc: using ~(~a~) implementation~%"
-                    implementation))
-
           (unwind-protect
                (progn
                  (when (> number-threads 1)
@@ -75,7 +71,8 @@
                                  :char-mode char-mode
                                  :implementation implementation
                                  :number-threads number-threads
-                                 :chunk-size chunk-size)
+                                 :chunk-size chunk-size
+                                 :debug debug)
 
                      (when any-errors
                        (setf exit-code 1))

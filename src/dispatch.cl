@@ -47,11 +47,12 @@
            (type fixnum size)
            (type (unsigned-byte 8) init-ws init-ed)
            (type (unsigned-byte 3) dispatch-mask)
-           (type (member nil :bytes :chars :chars-strict) char-mode)
+           (type (member nil :chars :chars-strict) char-mode)
            (type (member :generic :avx2 :avx512) implementation))
   (multiple-value-bind (lc wc cc)
       (case dispatch-mask
-        ((0 7)
+        (0 nil)
+        (7
          (case char-mode
            (:chars-strict (kernel-call count-lines-words-and-chars-utf8-strict implementation sap size init-ws init-ed))
            (:chars        (kernel-call count-lines-words-and-chars-utf8 implementation sap size init-ws))

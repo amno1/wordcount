@@ -183,8 +183,6 @@
     (setf (cli-config-files config) (nreverse (cli-config-files config)))
     (setf (cli-config-print-per-file config)
           (not (eq (cli-config-total-mode config) :only)))
-    (setf (cli-config-implementation config)
-          (resolve-implementation (cli-config-implementation config)))
     config))
 
 (defun print-help (&optional (stream *standard-output*))

@@ -31,9 +31,10 @@
 (declaim (optimize (speed 3) (safety 1)))
 
 (defun wc (file-list &key count-lines count-words count-characters count-bytes (char-mode :chars)
-                       (implementation :avx2)
+                       (implementation :auto)
                        (number-threads (min 8 (ncpus)))
-                       (chunk-size +default-chunk-size+))
+                       (chunk-size +default-chunk-size+)
+                       debug)
   "Process FILE-LIST counting lines, words, characters, and bytes.
    Returns (VALUES RESULTS ANY-ERRORS-P)."
   (let* ((impl (resolve-implementation implementation))
@@ -45,6 +46,9 @@
     (declare (type (unsigned-byte 3) dispatch-mask)
              (type (member :generic :avx2 :avx512) impl)
              (type fixnum number-threads chunk-size))
+
+    (when debug
+      (format *error-output* "wc: using ~(~a~) implementation~%" impl))
 
     (flet ((format-result (lines words chars bytes path)
              (let (file-results)
