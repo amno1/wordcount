@@ -4,8 +4,6 @@ This document records every place where the code relies on SBCL
 internals, non-standard extensions, or a non-stock SBCL/sb-simd build.
 The sources have `#-sbcl (error ...)` at the top of each file.
 
-## Why SBCL?
-
 The kernels and scheduler need:
 
 - **Raw foreign memory** — `sb-sys:system-area-pointer`,
@@ -33,15 +31,13 @@ The kernels and scheduler need:
       (pushnew :avx512 *features*))))
 ```
 
-Notes:
 
-- This runs while ASDF is loading the system definition — i.e. **at
-  build time**, not at the run time of the resulting executable.
-- `sb-impl:+internal-features+` is an SBCL internal symbol reflecting the
-  CPU features detected by the build host's SBCL at startup.
-- `WC_NO_SIMD` is consulted **here only**. Setting it at runtime has no
-  effect; the compiled binary already contains (or does not contain)
-  SIMD kernels.
+This runs while ASDF is loading the system definition — i.e. **at build time**,
+not at the run time of the resulting executable.  `sb-impl:+internal-features+`
+is an SBCL internal symbol reflecting the CPU features detected by the build
+host's SBCL at startup.  `WC_NO_SIMD` is consulted **here only**. Setting it at
+runtime has no effect; the compiled binary already contains (or does not
+contain) SIMD kernels.
 
 ## The `fpopcount` VOP
 
@@ -67,15 +63,16 @@ Notes:
       (inst popcnt r x))))
 ```
 
-- `fpopcount` maps directly to the x86 `POPCNT` instruction. It is used by the
-  AVX-512 kernels to count bits in 64-bit mask registers (`popcount64`).
-  It is not used by the generic or AVX2 paths.
-- `:overwrite-fndb-silently t` ensures that reloading the system in the
-  same image does not emit warnings about redefining the `defknown`.
-- `(in-package "SB-C")` and `(in-package "SB-VM")` reach into SBCL internal
-  packages.
-- `POPCNT` is emitted unconditionally by the VOP. All x86-64 CPUs with
-  AVX2 or AVX-512 support `POPCNT` (introduced around 2008 with Nehalem / SSE4.2).
+In order to eliminate some generic tests SBCL emits normally, we use a VOP,
+`fpopcount` (fast popcount), which maps directly to the x86 `POPCNT`
+instruction. It is used by the AVX-512 kernels to count bits in 64-bit mask
+registers (`popcount64`). It is not used by the generic or AVX2 paths.  This VOP
+emits `POPCNT` instruction unconditionally, so not tests are perofrmed. All
+x86-64 CPUs with AVX2 or AVX-512 support `POPCNT` (introduced around 2008 with
+Nehalem / SSE4.2). You can also tell SBCL to skip emiting the extra feature
+tests for POPCNT instruction, but I belive you have to do that when you compile
+your SBCL. A custom VOP ensures we can emit uncoditional VOP from any version of
+SBCL.
 
 ## The extended `sb-posix` layer
 
@@ -129,7 +126,7 @@ Details for each binding:
 - **`posix-read`** — raw libc `read(2)` into a SAP. Stock SB-POSIX only
   exposes a `read` that returns a Lisp string; the scheduler reads directly into
   aligned foreign buffers.
-- **`pread`** — the linchpin of the multi-threaded scheduler. `pread(2)`
+- **`pread`** — the enabler for the multi-threaded scheduler. `pread(2)`
   reads from a given offset without altering the file offset, allowing N
   workers to read N disjoint blocks of one file concurrently without locking.
 - **`aligned_alloc` / `free`** — AVX-512 loads and stores require 64-byte
@@ -190,52 +187,49 @@ Three rules apply to every buffer used by the kernels:
    preceding block's last byte. Allocations are rounded up with
    `round-up-64(chunk-size + 64)`, and the usable buffer pointer is `raw + 64`.
 3. **Explicit free.** `sb-posix:alien-free` is called in `shutdown-worker-pool`
-   for each worker buffer.
+   for each worker buffer. In library mode, embedding callers invoke
+   `shutdown-worker-pool` to clean up foreign allocations. In application mode
+   (`wc`), process teardown is delegated to `_exit(2)` via
+   `(sb-ext:exit :abort t)` without joining threads or freeing buffers,
+   relying on the OS kernel to reclaim address space and descriptors instantly.
 
 ## The AVX-512 evec encoder requirement
 
-The AVX-512 kernels use `sb-simd-avx512bw:u8.64` and related vector types.
-In stock SBCL, `sb-simd`'s AVX-512 support is incomplete:
-
-- The compiler-side instruction-set additions (`mask8.64`, `u8.64-mask=`,
-  `u8.64-mask>=`, `mask64-bits`, etc.) are present in SBCL master.
-- The **`evec` encoder** — the subsystem of sb-simd's IR that emits
-  `avx512bw:u8.64-...` machine instructions — is not in stock SBCL. The author
-  maintains a compiler branch that includes it.
-
-If built against stock SBCL, `#+avx512` is not enabled, and the system
-automatically compiles and runs with AVX2 or generic fallbacks.
+The AVX-512 kernels use `sb-simd-avx512bw:u8.64` and related vector and mask
+types. In stock SBCL, `sb-simd`'s AVX-512 support is incomplete, so if built
+against stock SBCL, `#+avx512` is not enabled, and the system automatically
+compiles and runs with AVX2 or generic fallbacks. The author maintains [a
+compiler branch, sb-simd-512, that includes it](https://github.com/amno1/sbcl).
 
 ## Build determinism
 
-The resulting binary is **hardware-specific**:
+The resulting binary is **hardware-specific**. The `#+avx2` / `#+avx512` reader
+conditionals bake kernel availability into the compiled fasl
+files. `resolve-implementation` returns `:avx512` (on an AVX-512 build) for
+`:auto` without runtime CPUID queries. `kernel-call` macro-expands to concrete
+kernel function names at compile time.
 
-- The `#+avx2` / `#+avx512` reader conditionals bake kernel availability into
-  the compiled fasl files.
-- `resolve-implementation` returns `:avx512` (on an AVX-512 build) for
-  `:auto` without runtime CPUID queries.
-- `kernel-call` macro-expands to concrete kernel function names at compile
-  time.
-
-Running an AVX-512 binary on a non-AVX-512 CPU will result in a `SIGILL`.
-To produce a portable binary for any x86-64 machine, build with `WC_NO_SIMD=1`.
+It means also that running an AVX-512 binary on a non-AVX-512 CPU will result in
+a `SIGILL`, so don't do it.  To produce a portable binary for any x86-64
+machine, build with `WC_NO_SIMD=1`.
 
 ## Summary of the SBCL-only surface
 
-| Feature                       | Where it is used                              | Portability |
-|-------------------------------|-----------------------------------------------|-------------|
-| `sb-sys:sap-*`, `sap+`        | All kernels, scheduler                        | SBCL-only   |
-| `sb-sys:with-pinned-objects`  | Tests and user code calling SAP tier          | SBCL-only   |
-| `sb-ext:defglobal`            | `kernels/common.cl`, `scheduler.cl`           | SBCL-only   |
-| `sb-impl:+internal-features+` | `wordcount.asd`, `test-avx512-kernels.lisp`   | SBCL-only   |
-| `sb-c:defknown`               | `common.cl`                                   | SBCL-only, version-sensitive |
-| `sb-vm:define-vop`            | `common.cl`                                   | SBCL-only, version-sensitive |
-| `sb-posix:define-call`        | `common.cl` (`posix_fadvise`)                 | SBCL-only   |
-| `sb-posix:define-alien-routine` | `common.cl` (`sysconf`, `read`, `pread`, `aligned_alloc`, `free`) | SBCL-only |
-| `sb-thread:*`                 | `scheduler.cl`                                | SBCL-only   |
-| `sb-simd-avx2:*`              | All AVX2 kernels                              | Requires `sb-simd` |
-| `sb-simd-avx512bw:*`, `sb-simd-avx512f:*` | All AVX-512 kernels             | Requires author's SBCL branch |
-| `sb-alien:long`               | `common.cl`                                   | SBCL-only   |
-| `sb-ext:*posix-argv*`         | `main.cl`                                     | SBCL-only   |
-| `sb-ext:exit`                 | `main.cl`, `cli-options.cl`                   | SBCL-only   |
-| `sb-int:strerror`             | `wc-driver.cl`                                | SBCL-only   |
+| Feature                         | Where it is used                              | Portability |
+|---------------------------------|-----------------------------------------------|-------------|
+| `sb-sys:sap-*`, `sap+`          | All kernels, scheduler                        | SBCL-only   |
+| `sb-sys:with-pinned-objects`    | Tests and user code calling SAP tier          | SBCL-only   |
+| `sb-ext:defglobal`              | `kernels/common.cl`, `scheduler.cl`           | SBCL-only   |
+| `sb-impl:+internal-features+`   | `wordcount.asd`, `test-avx512-kernels.lisp`   | SBCL-only   |
+| `sb-posix:define-call`          | `common.cl`                                   | SBCL-only   |
+| `sb-posix:define-alien-routine` | `common.cl`                                   | SBCL-only   |
+| `sb-thread:*`                   | `scheduler.cl`                                | SBCL-only   |
+| `sb-alien:long`                 | `common.cl`                                   | SBCL-only   |
+| `sb-ext:*posix-argv*`           | `main.cl`                                     | SBCL-only   |
+| `sb-ext:exit`                   | `main.cl`, `cli-options.cl`                   | SBCL-only   |
+| `sb-int:strerror`               | `wc-driver.cl`                                | SBCL-only   |
+| `sb-c:defknown`                 | `common.cl`                                   | SBCL-only, version-sensitive |
+| `sb-vm:define-vop`              | `common.cl`                                   | SBCL-only, version-sensitive |
+| `sb-simd-avx2:*`                | All AVX2 kernels                              | Requires `sb-simd` |
+| `sb-simd-avx512f:*`             | All AVX-512 kernels                           | Requires author's SBCL branch |
+| `sb-simd-avx512bw:*`            | All AVX-512 kernels                           | Requires author's SBCL branch |

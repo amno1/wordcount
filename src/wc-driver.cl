@@ -34,7 +34,8 @@
                        (implementation :auto)
                        (number-threads (min 8 (ncpus)))
                        (chunk-size +default-chunk-size+)
-                       debug)
+                       debug
+                       (close-fd t))
   "Process FILE-LIST counting lines, words, characters, and bytes.
    Returns (VALUES RESULTS ANY-ERRORS-P)."
   (let* ((impl (resolve-implementation implementation))
@@ -100,7 +101,8 @@
                                    (format *error-output* "wc: ~a: ~a~%" path err)
                                    (setf any-errors t))
                                  (push (format-result l w c b path) final-results)))
-                        (sb-posix:close fd)))
+                        (when close-fd
+                          (sb-posix:close fd))))
                   (sb-posix:syscall-error (e)
                     (format *error-output* "wc: ~a: ~a~%" path
                             (sb-int:strerror (sb-posix:syscall-errno e)))

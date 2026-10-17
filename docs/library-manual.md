@@ -288,6 +288,11 @@ Workers are OS threads created with `sb-thread:make-thread`, coordinated with
 
 `shutdown-worker-pool` is safe to call multiple times, including from
 condition handlers, and frees the per-worker aligned buffers via `alien-free`.
+In standalone application mode (`main.cl`), upon exit, `_exit(2)` is invoked
+directly (`sb-ext:exit :abort t`) without calling `shutdown-worker-pool` or
+joining threads, letting the OS kernel reclaim virtual memory pages, threads,
+and file descriptors instantly. In library mode, embedding applications should
+call `shutdown-worker-pool` when done with parallel counting to prevent leaks.
 
 ### Per-file flow (`process-fd-mt`)
 

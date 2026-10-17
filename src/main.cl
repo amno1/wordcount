@@ -51,67 +51,66 @@
                               (:never nil)
                               (:auto (> (length files) 1))
                               (t nil)))
-               (exit-code 0))
+               (exit-code 0)
+               (multiple-files (and files (cdr files))))
 
           ;; If --files0-from was supplied and yielded no files, do not read from stdin.
           (when (and (null files) (cli-config-files0-from-supplied-p cfg))
-            (sb-ext:exit :code 0))
+            (sb-ext:exit :code 0 :abort t))
 
-          (unwind-protect
-               (progn
-                 (when (> number-threads 1)
-                   (ensure-worker-pool number-threads chunk-size))
+          (when (> number-threads 1)
+            (ensure-worker-pool number-threads chunk-size))
 
-                 (let ((lines 0) (words 0) (chars 0) (bytes 0))
-                   (multiple-value-bind (results any-errors)
-                       (wc files :count-lines count-lines
-                                 :count-words count-words
-                                 :count-characters count-chars
-                                 :count-bytes count-bytes
-                                 :char-mode char-mode
-                                 :implementation implementation
-                                 :number-threads number-threads
-                                 :chunk-size chunk-size
-                                 :debug debug)
+          (let ((lines 0) (words 0) (chars 0) (bytes 0))
+            (multiple-value-bind (results any-errors)
+                (wc files :count-lines count-lines
+                          :count-words count-words
+                          :count-characters count-chars
+                          :count-bytes count-bytes
+                          :char-mode char-mode
+                          :implementation implementation
+                          :number-threads number-threads
+                          :chunk-size chunk-size
+                          :debug debug
+                          :close-fd multiple-files)
 
-                     (when any-errors
-                       (setf exit-code 1))
+              (when any-errors
+                (setf exit-code 1))
 
-                     (dolist (file-result results)
-                       (let ((counts (butlast file-result))
-                             (path (car (last file-result))))
+              (dolist (file-result results)
+                (let ((counts (butlast file-result))
+                      (path (car (last file-result))))
 
-                         (when print-per-file
-                           (dolist (count counts)
-                             (format t "~8d " count))
-                           (if (zerop (length path))
-                               (terpri)
-                               (format t " ~a~%" path)))
+                  (when print-per-file
+                    (dolist (count counts)
+                      (format t "~8d " count))
+                    (if (zerop (length path))
+                        (terpri)
+                        (format t " ~a~%" path)))
 
-                         (when count-lines (incf lines (the fixnum (pop counts))))
-                         (when count-words (incf words (the fixnum (pop counts))))
-                         (when count-chars (incf chars (the fixnum (pop counts))))
-                         (when count-bytes (incf bytes (the fixnum (pop counts))))))
+                  (when count-lines (incf lines (the fixnum (pop counts))))
+                  (when count-words (incf words (the fixnum (pop counts))))
+                  (when count-chars (incf chars (the fixnum (pop counts))))
+                  (when count-bytes (incf bytes (the fixnum (pop counts))))))
 
-                     (when print-total
-                       (when count-lines (format t "~8d " lines))
-                       (when count-words (format t "~8d " words))
-                       (when count-chars (format t "~8d " chars))
-                       (when count-bytes (format t "~8d " bytes))
-                       (format t " total~%")))))
+              (when print-total
+                (when count-lines (format t "~8d " lines))
+                (when count-words (format t "~8d " words))
+                (when count-chars (format t "~8d " chars))
+                (when count-bytes (format t "~8d " bytes))
+                (format t " total~%"))))
 
-            (shutdown-worker-pool))
-
-          (sb-ext:exit :code exit-code)))
+          (finish-output)
+          (sb-ext:exit :code exit-code :abort t)))
 
     (user-abort ()
       (terpri)
-      (shutdown-worker-pool)
-      (sb-ext:exit :code 130))
+      (finish-output)
+      (sb-ext:exit :code 130 :abort t))
     (error (e)
       (format *error-output* "wc: ~a~%" e)
-      (shutdown-worker-pool)
-      (sb-ext:exit :code 1)))
-  (sb-ext:exit :code 0))
+      (finish-output *error-output*)
+      (sb-ext:exit :code 1 :abort t)))
+  (sb-ext:exit :code 0 :abort t))
 
 ;;; main.cl ends here
