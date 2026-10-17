@@ -25,11 +25,19 @@
                 :serial t
                 :components ((src "packages")
                              (src "common")
-                             (src "kernels-avx2")
-                             (src "kernels-generic")
-                             #+avx512 (src "kernels-avx512")
+                             (:module "kernels"
+                              :serial t
+                              :components ((src "common")
+                                           (src "lines")
+                                           (src "words")
+                                           (src "chars")
+                                           (src "lines-and-words")
+                                           (src "lines-and-chars")
+                                           (src "words-and-chars")
+                                           (src "lines-words-and-chars")))
                              (src "dispatch")
-                             (src "thread-pool")
+                             (src "scheduler")
+                             (src "api")
                              (src "wc-driver")
                              (src "cli-options")
                              (src "main"))))

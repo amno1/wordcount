@@ -54,20 +54,6 @@
     (error ()
       (print-help-and-quit "~a must be an integer" option-name))))
 
-(defun resolve-implementation (requested)
-  "REQUESTED is :GENERIC, :AVX2, :AVX512, or NIL (pick the fastest
-   implementation this binary was built with). Returns the concrete
-   implementation WC.CL should actually use, falling back from :AVX512
-   to :AVX2 (with a warning) when this binary has no AVX-512 support."
-  (case requested
-    ((nil) #+avx512 :avx512 #-avx512 :avx2)
-    (:avx512
-     #+avx512 :avx512
-     #-avx512 (progn
-                (format *error-output*
-                        "wc: --implementation avx512 requested, but this build has no AVX-512 support -- falling back to avx2~%")
-                :avx2))
-    (t requested)))
 
 (defun read-files0-from (filename)
   "Read NUL-terminated filenames from a file or stdin."
