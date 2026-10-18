@@ -22,20 +22,12 @@
 
 ;;; Generic implementation
 
-(defun count-words-and-chars-ascii (sap size ws-init-state)
-  (values nil
-          (nth-value 1 (count-words-ascii sap size ws-init-state))
-          size))
+(def-swar-kernel count-words-and-chars-ascii (sap size ws-init-state) :words t :chars t)
 
-(defun count-words-and-chars-utf8 (sap size ws-init-state)
-  (values nil
-          (nth-value 1 (count-words-ascii sap size ws-init-state))
-          (nth-value 2 (count-chars-utf8 sap size))))
+(def-swar-kernel count-words-and-chars-utf8 (sap size ws-init-state) :words t :chars t :utf8 t)
 
-(defun count-words-and-chars-utf8-strict (sap size ws-init-state &optional (ed-init-state 0))
-  (values nil
-          (nth-value 1 (count-words-ascii sap size ws-init-state))
-          (nth-value 2 (count-chars-utf8-strict sap size ed-init-state))))
+(def-swar-kernel count-words-and-chars-utf8-strict (sap size ws-init-state &optional (ed-init-state 0))
+  :words t :chars t :utf8 'strict)
 
 
 ;;; AVX2 implementation

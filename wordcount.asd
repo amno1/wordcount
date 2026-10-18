@@ -29,6 +29,7 @@
                 :serial t
                 :components ((src "packages")
                              (src "common")
+                             (src "swar")
                              (:module "kernels"
                               :serial t
                               :components ((src "common")

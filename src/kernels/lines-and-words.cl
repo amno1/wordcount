@@ -18,10 +18,7 @@
 
 ;;; Generic implementation
 
-(defun count-lines-and-words-ascii (sap size ws-init-state)
-  (values (nth-value 0 (count-lines sap size))
-          (nth-value 1 (count-words-ascii sap size ws-init-state))
-          nil))
+(def-swar-kernel count-lines-and-words-ascii (sap size ws-init-state) :lines t :words t)
 
 (defun count-lines-and-words-utf8 (sap size ws-init-state)
   (count-lines-and-words-ascii sap size ws-init-state))

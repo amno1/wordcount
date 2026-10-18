@@ -18,31 +18,7 @@
 
 ;;; Generic SWAR implementation
 
-(defun count-words-ascii (sap size ws-init-state)
-  (declare (type fixnum size)
-           (type (unsigned-byte 8) ws-init-state)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (let ((loop-end (logandc2 size 7))
-        (words 0)
-        (prev-ws-hi (if (zerop ws-init-state) 0 #x80)))
-    (declare (type fixnum loop-end words)
-             (type (unsigned-byte 8) prev-ws-hi))
-    (loop for i of-type fixnum from 0 below loop-end by 8
-          for ws-mask = (swar-ws-mask (sb-sys:sap-ref-64 sap i))
-          do (incf words (swar-word-starts ws-mask prev-ws-hi))
-             (setf prev-ws-hi (swar-chunk-carry ws-mask)))
-    (values nil
-            (the fixnum
-                 (loop for j of-type fixnum from loop-end below size
-                       with prev of-type boolean = (not (zerop prev-ws-hi))
-                       for byte of-type (unsigned-byte 8) = (sb-sys:sap-ref-8 sap j)
-                       for curr of-type boolean = (%generic-ws-p byte)
-                       do
-                          (when (and prev (not curr)) (incf words))
-                          (setf prev curr)
-                       finally (return words)))
-            nil)))
+(def-swar-kernel count-words-ascii (sap size ws-init-state) :words t)
 
 (defun count-words-utf8 (sap size ws-init-state)
   (count-words-ascii sap size ws-init-state))

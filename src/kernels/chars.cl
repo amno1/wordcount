@@ -24,49 +24,9 @@
            (optimize (speed 3) (safety 0)))
   (values nil nil size))
 
-(defun count-chars-utf8 (sap size)
-  (declare (type fixnum size)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (let ((loop-end (logandc2 size 7))
-        (chars 0))
-    (declare (type fixnum loop-end chars))
-    (loop for i of-type fixnum from 0 below loop-end by 8
-          do (incf chars (swar-utf8-count-fast (sb-sys:sap-ref-64 sap i))))
-    (values nil nil
-            (the fixnum
-                 (loop for j of-type fixnum from loop-end below size
-                       count (/= (logand (sb-sys:sap-ref-8 sap j) #xC0) #x80)
-                       into tail
-                       finally (return (+ chars tail)))))))
+(def-swar-kernel count-chars-utf8 (sap size) :chars t :utf8 t)
 
-(defun count-chars-utf8-strict (sap size &optional (ed-init-state 0))
-  (declare (type fixnum size)
-           (type (unsigned-byte 8) ed-init-state)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (let ((loop-end (logandc2 size 7))
-        (chars 0)
-        (prev-ed-hi (if (zerop ed-init-state) 0 #x80)))
-    (declare (type fixnum loop-end chars)
-             (type (unsigned-byte 8) prev-ed-hi))
-    (loop for i of-type fixnum from 0 below loop-end by 8
-          for chunk of-type (unsigned-byte 64) = (sb-sys:sap-ref-64 sap i)
-          do (multiple-value-bind (bad new-prev-ed-hi) (swar-bad-surrogate-mask chunk prev-ed-hi)
-               (incf chars (logcount (logandc2 (swar-utf8-valid-lead-mask chunk) bad)))
-               (setf prev-ed-hi new-prev-ed-hi)))
-    (values nil nil
-            (the fixnum
-                 (loop for j of-type fixnum from loop-end below size
-                       with prev-ed of-type boolean = (not (zerop prev-ed-hi))
-                       for byte of-type (unsigned-byte 8) = (sb-sys:sap-ref-8 sap j)
-                       for ascii = (<= byte 127)
-                       for vlead = (<= 194 byte 244)
-                       for bad   = (and prev-ed (<= #xA0 byte #xBF))
-                       do
-                          (when (and (or ascii vlead) (not bad)) (incf chars))
-                          (setf prev-ed (= byte #xED))
-                       finally (return chars))))))
+(def-swar-kernel count-chars-utf8-strict (sap size &optional (ed-init-state 0)) :chars t :utf8 'strict)
 
 
 ;;; AVX2 implementation

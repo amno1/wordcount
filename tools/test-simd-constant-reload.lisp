@@ -4,7 +4,7 @@
 ;;; constants out of loops when bound with LET or LOAD-TIME-VALUE, causing
 ;;; redundant memory reloads from the code constant pool on every iteration.
 ;;;
-;;; Run with: sbcl --noinform --load test-simd-constant-reload.lisp
+;;; Run with: sbcl --noinform --load ttest-simd-constant-reload.lisp
 
 (require :sb-simd)
 

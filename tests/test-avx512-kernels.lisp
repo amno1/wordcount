@@ -30,6 +30,7 @@
 (defpackage #:with-user-abort (:use #:cl) (:export #:user-abort))
 (load (compile-file "src/packages.cl"))
 (load (compile-file "src/common.cl"))
+(load (compile-file "src/swar.cl"))
 (load (compile-file "src/kernels/common.cl"))
 (load (compile-file "src/kernels/lines.cl"))
 (load (compile-file "src/kernels/words.cl"))

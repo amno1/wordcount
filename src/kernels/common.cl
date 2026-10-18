@@ -12,105 +12,93 @@
 
 ;;; Generic SWAR helpers
 
-(declaim (inline %generic-ws-p))
-(defun %generic-ws-p (byte)
-  (declare (type (unsigned-byte 8) byte) (optimize (speed 3) (safety 0)))
-  (or (= byte 32) (<= 9 byte 13)))
+(defmacro gen-swar-kernel (sap size clines cwords cchars utf8 &optional (init-ws #xFF) (init-ed 0))
+  (let* ((strict-p (and utf8 (or (eq utf8 'strict)
+                                 (and (consp utf8)
+                                      (or (eq (car utf8) 'quote) (eq (car utf8) 'function))
+                                      (eq (cadr utf8) 'strict)))))
+         (loop-end (gensym "LOOP-END"))
+         (i (gensym "I"))
+         (c (gensym "C"))
+         (j (gensym "J"))
+         (b (gensym "B"))
+         (prev (gensym "PREV"))
+         (prev-ws (gensym "PREV-WS"))
+         (prev-ed (gensym "PREV-ED")))
+    `(let* ((,loop-end (logandc2 ,size 7))
+            ,@(when clines `((lines 0)))
+            ,@(when cwords `((words 0)))
+            ,@(when cchars `((chars ,(if (not utf8) size 0))))
+            (,prev (logand ,init-ws #x80))
+            (,prev-ed (if (zerop ,init-ed) 0 #x80)))
+       (declare (type fixnum ,loop-end
+                             ,@(when clines `(lines))
+                             ,@(when cwords `(words))
+                             ,@(when cchars `(chars)))
+                (type (unsigned-byte 8) ,prev ,prev-ed)
+                (ignorable ,prev ,prev-ed))
 
-(declaim (inline swar-byte))
-;; Byte K (0 = least significant) of 8-byte CHUNK.
-(defun swar-byte (chunk k)
-  (declare (type (unsigned-byte 64) chunk) (type (integer 0 7) k)
-           (optimize (speed 3) (safety 0)))
-  (ldb (byte 8 (* k 8)) chunk))
+       ;; 1. Branchless 8-byte SWAR loop
+       (loop for ,i of-type fixnum from 0 below ,loop-end by 8
+             for ,c of-type (unsigned-byte 64) = (sb-sys:sap-ref-64 ,sap ,i)
+             do
+             ,@(when clines
+                 `((incf lines (swar:new-line-count ,c))))
+             ,@(when cwords
+                 `((let ((curr (swar:gen-white-space-mask ,c)))
+                     (declare (type (unsigned-byte 64) curr))
+                     (incf words (swar:word-crossing-count curr ,prev))
+                     (setf ,prev (logand (ash curr -56) #x80)))))
+             ,@(when (and cchars utf8)
+                 (if strict-p
+                     `((multiple-value-bind (c-count new-ed)
+                           (swar:utf8-count-strict ,c ,prev-ed)
+                         (incf chars c-count)
+                         (setf ,prev-ed new-ed)))
+                     `((incf chars (swar:utf8-count-fast ,c))))))
 
-;; Bind BYTE-VAR to each of CHUNK's 8 bytes in turn, accumulating bit 7
-;; of that lane into MASK-VAR (already bound) whenever BODY is true.
-(defmacro do-chunk-bytes ((byte-var chunk mask-var) &body body)
-  (let ((k (gensym "K")))
-    `(dotimes (,k 8 ,mask-var)
-       (let ((,byte-var (swar-byte ,chunk ,k)))
-         (when (progn ,@body)
-           (setf ,mask-var (logior ,mask-var (ash #x80 (* ,k 8)))))))))
+       ;; 2. Scalar tail for remaining 0 to 7 bytes
+       (when (> ,size ,loop-end)
+         (let (,@(when cwords `((,prev-ws (not (zerop ,prev)))))
+               ,@(when (and cchars strict-p) `((,prev-ed (not (zerop ,prev-ed))))))
+           ,@(when cwords `((declare (type boolean ,prev-ws))))
+           ,@(when (and cchars strict-p) `((declare (type boolean ,prev-ed))))
+           (loop for ,j of-type fixnum from ,loop-end below ,size
+                 for ,b of-type (unsigned-byte 8) = (sb-sys:sap-ref-8 ,sap ,j)
+                 do
+                 ,@(when clines
+                     `((when (= ,b 10) (incf lines))))
+                 ,@(when cwords
+                     `((let ((curr (or (= ,b 32) (<= 9 ,b 13))))
+                         (when (and ,prev-ws (not curr)) (incf words))
+                         (setf ,prev-ws curr))))
+                 ,@(when (and cchars utf8)
+                     (if strict-p
+                         `((let ((ascii (<= ,b 127))
+                                 (vlead (<= 194 ,b 244))
+                                 (bad (and ,prev-ed (<= #xA0 ,b #xBF))))
+                             (when (and (or ascii vlead) (not bad))
+                               (incf chars))
+                             (setf ,prev-ed (= ,b #xED))))
+                         `((unless (= (logand ,b #xC0) #x80)
+                             (incf chars))))))))
 
-(declaim (inline swar-newline-mask))
-;; Bit 7 of each byte lane set iff that byte is #\Newline (10).
-(defun swar-newline-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
-           (sb-ext:muffle-conditions sb-ext:compiler-note))
-  (let ((mask 0))
-    (declare (type (unsigned-byte 64) mask))
-    (do-chunk-bytes (byte chunk mask) (= byte 10))))
+       (values ,(if clines 'lines 'nil)
+               ,(if cwords 'words 'nil)
+               ,(if cchars 'chars 'nil)))))
 
-(declaim (inline swar-ws-mask))
-;; Bit 7 of each byte lane set iff that byte is ASCII whitespace
-;; (space, or in [9,13]).
-(defun swar-ws-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
-           (sb-ext:muffle-conditions sb-ext:compiler-note))
-  (let ((mask 0))
-    (declare (type (unsigned-byte 64) mask))
-    (do-chunk-bytes (byte chunk mask) (%generic-ws-p byte))))
-
-(declaim (inline swar-word-starts))
-;; Count of word-start transitions (whitespace -> non-whitespace)
-;; within WS-MASK. PREV-HIGH-BIT carries the previous chunk's last
-;; byte's whitespace bit (0 or #x80) into byte 0's position.
-(defun swar-word-starts (ws-mask prev-high-bit)
-  (declare (type (unsigned-byte 64) ws-mask) (type (unsigned-byte 8) prev-high-bit)
-           (optimize (speed 3) (safety 0)))
-  (let* ((shifted (logior (ldb (byte 64 0) (ash ws-mask 8)) prev-high-bit))
-         (transitions (logand shifted (lognot ws-mask) #x8080808080808080)))
-    (declare (type (unsigned-byte 64) shifted transitions))
-    (the fixnum (logcount transitions))))
-
-(declaim (inline swar-chunk-carry))
-;; Extract byte 7's high bit from MASK (0 or #x80), to seed the next chunk's carry.
-(defun swar-chunk-carry (mask)
-  (declare (type (unsigned-byte 64) mask) (optimize (speed 3) (safety 0)))
-  (ldb (byte 8 0) (ash mask -56)))
-
-(declaim (inline swar-utf8-count-fast))
-;; Fast UTF-8 char start count in 8-byte chunk.
-(defun swar-utf8-count-fast (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0)))
-  (let* ((shifted (ldb (byte 64 0) (ash chunk 1)))
-         (cont-mask (logand chunk (lognot shifted) #x8080808080808080)))
-    (declare (type (unsigned-byte 64) shifted cont-mask))
-    (the fixnum (- 8 (logcount cont-mask)))))
-
-(declaim (inline swar-utf8-valid-lead-mask))
-;; Bit 7 of each byte lane set iff byte is ASCII (<=0x7F) or valid lead (0xC2-0xF4).
-(defun swar-utf8-valid-lead-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
-           (sb-ext:muffle-conditions sb-ext:compiler-note))
-  (let ((mask 0))
-    (declare (type (unsigned-byte 64) mask))
-    (do-chunk-bytes (byte chunk mask) (or (<= byte #x7F) (<= #xC2 byte #xF4)))))
-
-(declaim (inline swar-ed-mask))
-;; Bit 7 of each byte lane set iff byte is 0xED.
-(defun swar-ed-mask (chunk)
-  (declare (type (unsigned-byte 64) chunk) (optimize (speed 3) (safety 0))
-           (sb-ext:muffle-conditions sb-ext:compiler-note))
-  (let ((mask 0))
-    (declare (type (unsigned-byte 64) mask))
-    (do-chunk-bytes (byte chunk mask) (= byte #xED))))
-
-(declaim (inline swar-bad-surrogate-mask))
-;; Bit 7 of each byte lane set iff that byte is an A0-BF follow-up to an
-;; immediately preceding 0xED lead. Second value is the new carry.
-(defun swar-bad-surrogate-mask (chunk prev-ed-high-bit)
-  (declare (type (unsigned-byte 64) chunk)
-           (type (unsigned-byte 8) prev-ed-high-bit)
-           (optimize (speed 3) (safety 0))
-           (sb-ext:muffle-conditions sb-ext:compiler-note))
-  (let* ((ed-mask (swar-ed-mask chunk))
-         (follow-mask 0)
-         (ed-shifted (logior (ldb (byte 64 0) (ash ed-mask 8)) prev-ed-high-bit)))
-    (declare (type (unsigned-byte 64) follow-mask ed-shifted))
-    (setf follow-mask (do-chunk-bytes (byte chunk follow-mask) (<= #xA0 byte #xBF)))
-    (values (logand ed-shifted follow-mask) (swar-chunk-carry ed-mask))))
+(defmacro def-swar-kernel (name (&rest args) &key lines words chars utf8)
+  (let ((ws-arg (if (member 'ws-init-state args) 'ws-init-state #xFF))
+        (ed-arg (if (or (member 'ed-init-state args) (member '&optional args)) 'ed-init-state 0)))
+    `(defun ,name ,args
+       (declare (type sb-sys:system-area-pointer sap)
+                (type fixnum size)
+                ,@(when (member 'ws-init-state args)
+                    `((type (unsigned-byte 8) ws-init-state)))
+                ,@(when (or (member 'ed-init-state args) (member '&optional args))
+                    `((type (unsigned-byte 8) ed-init-state)))
+                (optimize (speed 3) (safety 0)))
+       (gen-swar-kernel sap size ,lines ,words ,chars ,utf8 ,ws-arg ,ed-arg))))
 
 
 ;;; AVX2 helpers

@@ -36,10 +36,21 @@
 ;; a NAME-CONFLICT at DEFPACKAGE time. Local nicknames only; kernels
 ;; using U8.64/MASK64/etc.
 
+(defpackage #:swar
+  (:use #:cl)
+  (:export #:fpopcount
+           #:null-byte-count
+           #:new-line-count
+           #:utf8-count-fast
+           #:utf8-count-strict
+           #:gen-white-space-mask
+           #:word-crossing-count))
+
 (defpackage #:wordcount
   (:use #:cl #:with-user-abort #+avx2 #:sb-simd-avx2)
   (:shadow #:debug)
-  (:local-nicknames #+avx2 (#:avx2 #:sb-simd-avx2)
+  (:local-nicknames (#:swar #:swar)
+                    #+avx2 (#:avx2 #:sb-simd-avx2)
                     #+avx2 (#:avx #:sb-simd-avx)
                     #+avx2 (#:sse4.1 #:sb-simd-sse4.1)
                     #+avx512 (#:avx512bw #:sb-simd-avx512bw)

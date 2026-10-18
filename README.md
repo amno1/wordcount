@@ -23,7 +23,6 @@ AVX-512.
 - [Architecture](#architecture)
 - [Documentation](#documentation)
 - [License](#license)
-- [Author](#author)
 
 ---
 

@@ -22,18 +22,11 @@
 
 ;;; Generic implementation
 
-(defun count-lines-and-chars-ascii (sap size)
-  (values (nth-value 0 (count-lines sap size)) nil size))
+(def-swar-kernel count-lines-and-chars-ascii (sap size) :lines t :chars t)
 
-(defun count-lines-and-chars-utf8 (sap size)
-  (values (nth-value 0 (count-lines sap size))
-          nil
-          (nth-value 2 (count-chars-utf8 sap size))))
+(def-swar-kernel count-lines-and-chars-utf8 (sap size) :lines t :chars t :utf8 t)
 
-(defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
-  (values (nth-value 0 (count-lines sap size))
-          nil
-          (nth-value 2 (count-chars-utf8-strict sap size ed-init-state))))
+(def-swar-kernel count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0)) :lines t :chars t :utf8 'strict)
 
 
 ;;; AVX2 implementation

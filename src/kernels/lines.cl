@@ -19,18 +19,7 @@
 
 ;;; Generic SWAR implementation
 
-(defun count-lines (sap size)
-  (declare (type fixnum size)
-           (type sb-sys:system-area-pointer sap)
-           (optimize (speed 3) (safety 0)))
-  (let ((loop-end (logandc2 size 7))
-        (lines 0))
-    (declare (type fixnum loop-end lines))
-    (loop for i of-type fixnum from 0 below loop-end by 8
-          do (incf lines (logcount (swar-newline-mask (sb-sys:sap-ref-64 sap i)))))
-    (loop for j of-type fixnum from loop-end below size
-          when (= (sb-sys:sap-ref-8 sap j) 10) do (incf lines))
-    (values lines nil nil)))
+(def-swar-kernel count-lines (sap size) :lines t)
 
 (defun count-lines-ascii (sap size)
   (count-lines sap size))
