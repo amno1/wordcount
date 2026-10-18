@@ -29,17 +29,17 @@
 
 (defmacro kernel-call (base-name implementation &rest args)
   (let* ((name-string (symbol-name base-name))
-         (generic-fn (intern (concatenate 'string name-string "-GENERIC") :wc))
-         (avx512-fn  (intern (concatenate 'string name-string "-AVX512")  :wc)))
+         (avx2-fn    (intern (concatenate 'string name-string "-AVX2")   :wc))
+         (avx512-fn  (intern (concatenate 'string name-string "-AVX512") :wc)))
     `(ecase ,implementation
-       (:generic (,generic-fn ,@args))
+       (:generic (,base-name ,@args))
        (:avx2    ,(if (find :avx2 *features*)
-                      `(,base-name ,@args)
-                      `(,generic-fn ,@args)))
+                      `(,avx2-fn ,@args)
+                      `(,base-name ,@args)))
        (:avx512  ,(cond
                     ((find :avx512 *features*) `(,avx512-fn ,@args))
-                    ((find :avx2 *features*) `(,base-name ,@args))
-                    (t `(,generic-fn ,@args)))))))
+                    ((find :avx2 *features*)   `(,avx2-fn ,@args))
+                    (t                         `(,base-name ,@args)))))))
 
 (declaim (inline dispatch-kernel))
 (defun dispatch-kernel (implementation dispatch-mask char-mode sap size init-ws &optional (init-ed 0))

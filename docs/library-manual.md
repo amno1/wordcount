@@ -203,13 +203,11 @@ Each backend (`generic`, `avx2`, `avx512`) implements seven low-level
 | `count-words-and-chars-*`       | `(values L W C)`  | `W`, `C` set.                             |
 | `count-lines-words-and-chars-*` | `(values L W C)`  | All three set.                            |
 
-Within each family, three variants exist:
+Within each family, three implementation variants exist for each kernel operation:
 
-- `-generic` — pure Lisp SWAR, always compiled.
-- `<name>` (no suffix) — AVX2, compiled when `:avx2` is in `*features*`;
-  otherwise falls back to the generic variant at dispatch.
-- `-avx512` — AVX-512, compiled when `:avx512` is in `*features*`;
-  otherwise falls back to AVX2 or generic.
+- `<name>` (unadorned, base name) — portable SWAR implementation in standard Common Lisp, always compiled and available on every platform.
+- `-avx2` — 256-bit AVX2 SIMD vector kernel (`sb-simd-avx2`), compiled when `:avx2` is in `*features*`. On non-AVX2 hosts (`#-avx2`), it aliases the base SWAR kernel.
+- `-avx512` — 512-bit AVX-512 SIMD vector kernel (`sb-simd-avx512bw`), compiled when `:avx512` is in `*features*`. When `:avx512` is not present, `kernel-call` dispatches to AVX2 or the base SWAR kernel.
 
 The character modes are:
 

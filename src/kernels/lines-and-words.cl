@@ -9,8 +9,8 @@
 
 (declaim (optimize (speed 3) (safety 0)))
 
-(declaim (inline count-lines-and-words-ascii-generic count-lines-and-words-utf8-generic
-                 count-lines-and-words-ascii count-lines-and-words-utf8
+(declaim (inline count-lines-and-words-ascii count-lines-and-words-utf8
+                 count-lines-and-words-ascii-avx2 count-lines-and-words-utf8-avx2
                  #+avx512 count-lines-and-words-512
                  #+avx512 count-lines-and-words-ascii-avx512
                  #+avx512 count-lines-and-words-utf8-avx512))
@@ -18,20 +18,20 @@
 
 ;;; Generic implementation
 
-(defun count-lines-and-words-ascii-generic (sap size ws-init-state)
-  (values (nth-value 0 (count-lines-generic sap size))
-          (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
+(defun count-lines-and-words-ascii (sap size ws-init-state)
+  (values (nth-value 0 (count-lines sap size))
+          (nth-value 1 (count-words-ascii sap size ws-init-state))
           nil))
 
-(defun count-lines-and-words-utf8-generic (sap size ws-init-state)
-  (count-lines-and-words-ascii-generic sap size ws-init-state))
+(defun count-lines-and-words-utf8 (sap size ws-init-state)
+  (count-lines-and-words-ascii sap size ws-init-state))
 
 
 ;;; AVX2 implementation
 
 #+avx2
 (progn
-  (defun count-lines-and-words-ascii (sap size ws-init-state)
+  (defun count-lines-and-words-ascii-avx2 (sap size ws-init-state)
     (declare (type fixnum size)
              (type (unsigned-byte 8) ws-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -99,19 +99,19 @@
                                     (the fixnum (+ words twords))
                                     nil))))))
 
-  (defun count-lines-and-words-utf8 (sap size ws-init-state)
+  (defun count-lines-and-words-utf8-avx2 (sap size ws-init-state)
     (declare (type fixnum size)
              (type (unsigned-byte 8) ws-init-state)
              (type sb-sys:system-area-pointer sap)
              (optimize (speed 3) (safety 0)))
-    (count-lines-and-words-ascii sap size ws-init-state)))
+    (count-lines-and-words-ascii-avx2 sap size ws-init-state)))
 
 #-avx2
 (progn
-  (defun count-lines-and-words-ascii (sap size ws-init-state)
-    (count-lines-and-words-ascii-generic sap size ws-init-state))
-  (defun count-lines-and-words-utf8 (sap size ws-init-state)
-    (count-lines-and-words-utf8-generic sap size ws-init-state)))
+  (defun count-lines-and-words-ascii-avx2 (sap size ws-init-state)
+    (count-lines-and-words-ascii sap size ws-init-state))
+  (defun count-lines-and-words-utf8-avx2 (sap size ws-init-state)
+    (count-lines-and-words-utf8 sap size ws-init-state)))
 
 
 ;;; AVX-512 implementation

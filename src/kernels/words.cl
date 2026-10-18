@@ -9,8 +9,8 @@
 
 (declaim (optimize (speed 3) (safety 0)))
 
-(declaim (inline count-words-ascii-generic count-words-utf8-generic
-                 count-words-ascii count-words-utf8
+(declaim (inline count-words-ascii count-words-utf8
+                 count-words-ascii-avx2 count-words-utf8-avx2
                  #+avx512 count-words-512
                  #+avx512 count-words-ascii-avx512
                  #+avx512 count-words-utf8-avx512))
@@ -18,7 +18,7 @@
 
 ;;; Generic SWAR implementation
 
-(defun count-words-ascii-generic (sap size ws-init-state)
+(defun count-words-ascii (sap size ws-init-state)
   (declare (type fixnum size)
            (type (unsigned-byte 8) ws-init-state)
            (type sb-sys:system-area-pointer sap)
@@ -44,15 +44,15 @@
                        finally (return words)))
             nil)))
 
-(defun count-words-utf8-generic (sap size ws-init-state)
-  (count-words-ascii-generic sap size ws-init-state))
+(defun count-words-utf8 (sap size ws-init-state)
+  (count-words-ascii sap size ws-init-state))
 
 
 ;;; AVX2 implementation
 
 #+avx2
 (progn
-  (defun count-words-ascii (sap size ws-init-state)
+  (defun count-words-ascii-avx2 (sap size ws-init-state)
     (declare (type fixnum size)
              (type (unsigned-byte 8) ws-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -101,15 +101,15 @@
                  finally
                     (return (values nil (the fixnum (+ words tail)) nil))))))
 
-  (defun count-words-utf8 (sap size ws-init-state)
-    (count-words-ascii sap size ws-init-state)))
+  (defun count-words-utf8-avx2 (sap size ws-init-state)
+    (count-words-ascii-avx2 sap size ws-init-state)))
 
 #-avx2
 (progn
-  (defun count-words-ascii (sap size ws-init-state)
-    (count-words-ascii-generic sap size ws-init-state))
-  (defun count-words-utf8 (sap size ws-init-state)
-    (count-words-utf8-generic sap size ws-init-state)))
+  (defun count-words-ascii-avx2 (sap size ws-init-state)
+    (count-words-ascii sap size ws-init-state))
+  (defun count-words-utf8-avx2 (sap size ws-init-state)
+    (count-words-utf8 sap size ws-init-state)))
 
 
 ;;; AVX-512 implementation

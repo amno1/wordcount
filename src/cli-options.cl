@@ -30,7 +30,11 @@
 
 (defstruct (cli-config (:copier nil))
   (files nil :type list)
+  (files0-from-file nil)
   (files0-from-supplied-p nil :type boolean)
+  (files0-from-count 0 :type fixnum)
+  (files0-from-err nil :type boolean)
+  (files0-from-pipe-p nil :type boolean)
   (count-lines nil :type boolean)
   (count-words nil :type boolean)
   (count-chars nil :type boolean)
@@ -58,24 +62,66 @@
 
 (defun read-files0-from (filename)
   "Read NUL-terminated filenames from a file or stdin."
-  (declare (type simple-string filename))
-  (let ((files nil)
+  (multiple-value-bind (files err-p n-tokens pipe-p)
+      (read-files0-from-spec filename)
+    (declare (ignore err-p n-tokens pipe-p))
+    files))
+
+(defun read-files0-from-spec (from-file)
+  "Read NUL-terminated filenames from FROM-FILE or stdin.
+Returns (VALUES FILES ERR-P N-TOKENS PIPE-P)."
+  (let ((stream nil)
+        (fd nil)
+        (pipe-p nil)
+        (files nil)
+        (err-p nil)
+        (n-tokens 0)
         (path-bytes (make-array 1024 :element-type '(unsigned-byte 8) :fill-pointer 0 :adjustable t)))
-    (flet ((process-stream (stream)
-             (loop for byte = (read-byte stream nil nil)
-                   while byte
-                   do (if (zerop byte)
-                          (unless (zerop (length path-bytes))
-                            (push (sb-ext:octets-to-string path-bytes :external-format :utf-8) files)
-                            (setf (fill-pointer path-bytes) 0))
-                          (vector-push-extend byte path-bytes)))))
-      (if (string= filename "-")
-          (let ((stdin-bin (sb-sys:make-fd-stream
-                            0 :input t :element-type '(unsigned-byte 8) :buffering :full)))
-            (process-stream stdin-bin))
-          (with-open-file (stream filename :direction :input :element-type '(unsigned-byte 8))
-            (process-stream stream))))
-    (nreverse files)))
+    (if (string= from-file "-")
+        (let ((st (ignore-errors (sb-posix:fstat 0))))
+          (setf pipe-p (not (and st (sb-posix:s-isreg (sb-posix:stat-mode st)))))
+          (setf stream (sb-sys:make-fd-stream 0 :input t :element-type '(unsigned-byte 8) :buffering :full)))
+        (handler-case
+            (setf fd (sb-posix:open from-file sb-posix:o-rdonly)
+                  stream (sb-sys:make-fd-stream fd :input t :element-type '(unsigned-byte 8) :buffering :full))
+          (sb-posix:syscall-error (e)
+            (format *error-output* "wc: cannot open '~a' for reading: ~a~%"
+                    from-file (sb-int:strerror (sb-posix:syscall-errno e)))
+            (sb-ext:exit :code 1 :abort t))
+          (error (e)
+            (format *error-output* "wc: cannot open '~a' for reading: ~a~%" from-file e)
+            (sb-ext:exit :code 1 :abort t))))
+    (unwind-protect
+         (loop for byte = (read-byte stream nil nil)
+               while byte
+               do (if (zerop byte)
+                      (progn
+                        (incf n-tokens)
+                        (if (zerop (length path-bytes))
+                            (progn
+                              (format *error-output* "wc: ~a:~d: invalid zero-length file name~%"
+                                      from-file n-tokens)
+                              (setf err-p t))
+                            (let ((path-str (sb-ext:octets-to-string path-bytes :external-format :utf-8)))
+                              (setf (fill-pointer path-bytes) 0)
+                              (if (and (string= from-file "-") (string= path-str "-"))
+                                  (progn
+                                    (format *error-output* "wc: when reading file names from standard input, no file name of '-' allowed~%")
+                                    (setf err-p t))
+                                  (push path-str files)))))
+                      (vector-push-extend byte path-bytes))
+               finally
+                  (when (> (length path-bytes) 0)
+                    (incf n-tokens)
+                    (let ((path-str (sb-ext:octets-to-string path-bytes :external-format :utf-8)))
+                      (if (and (string= from-file "-") (string= path-str "-"))
+                          (progn
+                            (format *error-output* "wc: when reading file names from standard input, no file name of '-' allowed~%")
+                            (setf err-p t))
+                          (push path-str files)))))
+      (when fd
+        (ignore-errors (close stream))))
+    (values (nreverse files) err-p n-tokens pipe-p)))
 
 (defun parse-cli-args (argv)
   "Parse command-line arguments ARGV (excluding argv[0]).
@@ -158,12 +204,7 @@
 
                  ((string= opt "files0-from")
                   (setf (cli-config-files0-from-supplied-p config) t)
-                  (let ((file (require-val)))
-                    (handler-case
-                        (dolist (f (read-files0-from file))
-                          (push f (cli-config-files config)))
-                      (error (e)
-                        (print-help-and-quit "cannot read file list from '~a': ~a" file e)))))
+                  (setf (cli-config-files0-from-file config) (require-val)))
 
                  (t (print-help-and-quit "Unknown option: --~a" opt))))))
 
@@ -181,7 +222,19 @@
           ;; 5. Positional arguments (filenames)
           (t (push arg (cli-config-files config))))))
 
-    (setf (cli-config-files config) (nreverse (cli-config-files config)))
+    (if (cli-config-files0-from-supplied-p config)
+        (progn
+          (when (cli-config-files config)
+            (format *error-output* "wc: extra operand '~a'~%file operands cannot be combined with --files0-from~%Try 'wc --help' for more information.~%"
+                    (first (nreverse (cli-config-files config))))
+            (sb-ext:exit :code 1 :abort t))
+          (multiple-value-bind (files err-p n-tokens pipe-p)
+              (read-files0-from-spec (cli-config-files0-from-file config))
+            (setf (cli-config-files config) files
+                  (cli-config-files0-from-err config) err-p
+                  (cli-config-files0-from-count config) n-tokens
+                  (cli-config-files0-from-pipe-p config) pipe-p)))
+        (setf (cli-config-files config) (nreverse (cli-config-files config))))
     (setf (cli-config-print-per-file config)
           (not (eq (cli-config-total-mode config) :only)))
     config))

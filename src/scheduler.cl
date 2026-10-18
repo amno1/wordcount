@@ -293,16 +293,46 @@ Returns (VALUES LINES WORDS CHARS BYTES ERROR)."
       ((and cur end (>= cur 0) (>= end 0) (> end cur))
        (let ((size (- end cur)))
          (declare (type fixnum size))
-         (sb-posix:lseek fd cur sb-posix:seek-set)
-         ;; Fast path: if dispatch-mask is 0, we only care about bytes and file size is known!
+         ;; Fast path: if dispatch-mask is 0, we only care about bytes!
          (if (zerop dispatch-mask)
-             (values 0 0 0 size nil)
-             (if (<= nthreads 1)
-                 (process-fd-linear fd dispatch-mask char-mode implementation buf-size)
-                 (process-fd-mt fd size nthreads dispatch-mask char-mode implementation buf-size)))))
-      ;; Empty file
-      ((and cur end (= cur end))
-       (sb-posix:lseek fd cur sb-posix:seek-set)
+             (let ((page-size 4096))
+               (if (zerop (mod end page-size))
+                   ;; Handle /proc and /sys files and files ending at page boundary:
+                   ;; Seek to 1 page before EOF, then read linearly to EOF.
+                   (let* ((ep-1 (1- end))
+                          (hi-pos (- ep-1 (mod ep-1 page-size)))
+                          (bytes 0))
+                     (if (< cur hi-pos)
+                         (progn
+                           (sb-posix:lseek fd hi-pos sb-posix:seek-set)
+                           (setf bytes (- hi-pos cur)))
+                         (sb-posix:lseek fd cur sb-posix:seek-set))
+                     (multiple-value-bind (l w c b err)
+                         (process-fd-linear fd 0 nil implementation buf-size)
+                       (declare (ignore l w c))
+                       (when (/= fd 0)
+                         (ignore-errors (sb-posix:lseek fd cur sb-posix:seek-set)))
+                       (values 0 0 0 (+ bytes (the fixnum b)) err)))
+                   ;; Otherwise (size not a multiple of page size):
+                   (progn
+                     (if (= fd 0)
+                         (sb-posix:lseek fd end sb-posix:seek-set)
+                         (sb-posix:lseek fd cur sb-posix:seek-set))
+                     (values 0 0 0 size nil))))
+             (progn
+               (sb-posix:lseek fd cur sb-posix:seek-set)
+               (if (<= nthreads 1)
+                   (multiple-value-prog1
+                       (process-fd-linear fd dispatch-mask char-mode implementation buf-size)
+                     (when (/= fd 0)
+                       (ignore-errors (sb-posix:lseek fd cur sb-posix:seek-set))))
+                   (multiple-value-prog1
+                       (process-fd-mt fd size nthreads dispatch-mask char-mode implementation buf-size)
+                     (if (= fd 0)
+                         (ignore-errors (sb-posix:lseek fd end sb-posix:seek-set))
+                         (ignore-errors (sb-posix:lseek fd cur sb-posix:seek-set)))))))))
+      ;; Empty file or already at EOF
+      ((and cur end (>= cur 0) (= cur end))
        (values 0 0 0 0 nil))
       ;; Non-seekable stream (stdin, pipes, sockets)
       (t

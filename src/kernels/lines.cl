@@ -9,8 +9,8 @@
 
 (declaim (optimize (speed 3) (safety 0)))
 
-(declaim (inline count-lines-generic count-lines-ascii-generic count-lines-utf8-generic
-                 count-lines-ascii count-lines-utf8
+(declaim (inline count-lines count-lines-ascii count-lines-utf8
+                 count-lines-avx2 count-lines-ascii-avx2 count-lines-utf8-avx2
                  #+avx512 count-lines-512
                  #+avx512 count-lines-avx512
                  #+avx512 count-lines-ascii-avx512
@@ -19,7 +19,7 @@
 
 ;;; Generic SWAR implementation
 
-(defun count-lines-generic (sap size)
+(defun count-lines (sap size)
   (declare (type fixnum size)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
@@ -32,18 +32,18 @@
           when (= (sb-sys:sap-ref-8 sap j) 10) do (incf lines))
     (values lines nil nil)))
 
-(defun count-lines-ascii-generic (sap size)
-  (count-lines-generic sap size))
+(defun count-lines-ascii (sap size)
+  (count-lines sap size))
 
-(defun count-lines-utf8-generic (sap size)
-  (count-lines-generic sap size))
+(defun count-lines-utf8 (sap size)
+  (count-lines sap size))
 
 
 ;;; AVX2 implementation
 
 #+avx2
 (progn
-  (defun count-lines-ascii (sap size)
+  (defun count-lines-ascii-avx2 (sap size)
     (declare (type fixnum size)
              (type sb-sys:system-area-pointer sap)
              (optimize (speed 3) (safety 0)))
@@ -86,15 +86,20 @@
            (declare (type fixnum lines tail))
            (return (values (the fixnum (+ lines tail)) nil nil)))))
 
-  (defun count-lines-utf8 (sap size)
-    (count-lines-ascii sap size)))
+  (defun count-lines-utf8-avx2 (sap size)
+    (count-lines-ascii-avx2 sap size))
+
+  (defun count-lines-avx2 (sap size)
+    (count-lines-ascii-avx2 sap size)))
 
 #-avx2
 (progn
-  (defun count-lines-ascii (sap size)
-    (count-lines-ascii-generic sap size))
-  (defun count-lines-utf8 (sap size)
-    (count-lines-utf8-generic sap size)))
+  (defun count-lines-ascii-avx2 (sap size)
+    (count-lines-ascii sap size))
+  (defun count-lines-utf8-avx2 (sap size)
+    (count-lines-utf8 sap size))
+  (defun count-lines-avx2 (sap size)
+    (count-lines sap size)))
 
 
 ;;; AVX-512 implementation

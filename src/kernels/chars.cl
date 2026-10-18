@@ -9,24 +9,22 @@
 
 (declaim (optimize (speed 3) (safety 0)))
 
-(declaim (inline count-chars-ascii-generic count-chars-utf8-generic count-chars-utf8-strict-generic
-                 count-chars-ascii count-chars-utf8 count-chars-utf8-strict
+(declaim (inline count-chars-ascii count-chars-utf8 count-chars-utf8-strict
+                 count-chars-ascii-avx2 count-chars-utf8-avx2 count-chars-utf8-strict-avx2
                  #+avx512 count-chars-ascii-avx512
-                 #+avx512 count-chars-utf8-512
                  #+avx512 count-chars-utf8-avx512
-                 #+avx512 count-chars-utf8-strict-512
                  #+avx512 count-chars-utf8-strict-avx512))
 
 
 ;;; Generic SWAR implementation
 
-(defun count-chars-ascii-generic (sap size)
+(defun count-chars-ascii (sap size)
   (declare (ignore sap)
            (type fixnum size)
            (optimize (speed 3) (safety 0)))
   (values nil nil size))
 
-(defun count-chars-utf8-generic (sap size)
+(defun count-chars-utf8 (sap size)
   (declare (type fixnum size)
            (type sb-sys:system-area-pointer sap)
            (optimize (speed 3) (safety 0)))
@@ -42,7 +40,7 @@
                        into tail
                        finally (return (+ chars tail)))))))
 
-(defun count-chars-utf8-strict-generic (sap size &optional (ed-init-state 0))
+(defun count-chars-utf8-strict (sap size &optional (ed-init-state 0))
   (declare (type fixnum size)
            (type (unsigned-byte 8) ed-init-state)
            (type sb-sys:system-area-pointer sap)
@@ -73,7 +71,7 @@
 
 ;;; AVX2 implementation
 
-(defun count-chars-ascii (sap size)
+(defun count-chars-ascii-avx2 (sap size)
   (declare (ignore sap)
            (type fixnum size)
            (optimize (speed 3) (safety 0)))
@@ -81,7 +79,7 @@
 
 #+avx2
 (progn
-  (defun count-chars-utf8 (sap size)
+  (defun count-chars-utf8-avx2 (sap size)
     (declare (type fixnum size)
              (type sb-sys:system-area-pointer sap)
              (optimize (speed 3) (safety 0)))
@@ -131,7 +129,7 @@
            (declare (type fixnum chars tail))
            (return (values nil nil (the fixnum (+ chars tail)))))))
 
-  (defun count-chars-utf8-strict (sap size &optional (ed-init-state 0))
+  (defun count-chars-utf8-strict-avx2 (sap size &optional (ed-init-state 0))
     (declare (type fixnum size)
              (type (unsigned-byte 8) ed-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -192,10 +190,10 @@
 
 #-avx2
 (progn
-  (defun count-chars-utf8 (sap size)
-    (count-chars-utf8-generic sap size))
-  (defun count-chars-utf8-strict (sap size &optional (ed-init-state 0))
-    (count-chars-utf8-strict-generic sap size ed-init-state)))
+  (defun count-chars-utf8-avx2 (sap size)
+    (count-chars-utf8 sap size))
+  (defun count-chars-utf8-strict-avx2 (sap size &optional (ed-init-state 0))
+    (count-chars-utf8-strict sap size ed-init-state)))
 
 
 ;;; AVX-512 implementation
@@ -206,7 +204,7 @@
     (declare (ignore sap))
     (values nil nil size))
 
-  (defun count-chars-utf8-512 (sap size)
+  (defun count-chars-utf8-avx512 (sap size)
     (declare (type fixnum size)
              (type sb-sys:system-area-pointer sap)
              (optimize (speed 3) (safety 0)))
@@ -219,7 +217,8 @@
                (type (unsigned-byte 64) ca0 ca1 ca2 ca3))
       (macrolet ((chunk (offset ca)
                    `(let* ((c (avx512bw:u8.64-sap-ref sap (+ i ,offset)))
-                           (non-cont (logand #xFFFFFFFFFFFFFFFF (lognot (cont-bits-512 c c0-vec 80-vec)))))
+                           (non-cont (logand #xFFFFFFFFFFFFFFFF
+                                             (lognot (cont-bits-512 c c0-vec 80-vec)))))
                       (incf ,ca (popcount64 non-cont)))))
         (loop for i of-type fixnum from 0 below loop-end by 512 do
           (chunk 0   ca0)
@@ -233,25 +232,23 @@
       (let ((chars (+ ca0 ca1 ca2 ca3)))
         (declare (type (unsigned-byte 64) chars))
         (loop for j of-type fixnum from loop-end below size
-              when (/= (logand (sb-sys:sap-ref-8 sap j) #xC0) #x80) do (incf chars))
+              when (/= (logand (sb-sys:sap-ref-8 sap j) #xC0) #x80)
+              do (incf chars))
         (values nil nil (the fixnum chars)))))
 
-  (defun count-chars-utf8-avx512 (sap size)
-    (count-chars-utf8-512 sap size))
-
-  (defun count-chars-utf8-strict-512 (sap size &optional (ed-init-state 0))
+  (defun count-chars-utf8-strict-avx512 (sap size &optional (ed-init-state 0))
     (declare (type fixnum size)
              (type (unsigned-byte 8) ed-init-state)
              (type sb-sys:system-area-pointer sap)
              (optimize (speed 3) (safety 0)))
     (let ((loop-end (logandc2 size 511))
-          (v80 +utf8-v80+)
-          (v0 +utf8-v0+)
+          (v80  +utf8-v80+)
+          (v0   +utf8-v0+)
           (v194 +utf8-v194+)
           (v244 +utf8-v244+)
-          (ved +utf8-ved+)
-          (va0 +utf8-va0+)
-          (vbf +utf8-vbf+)
+          (ved  +utf8-ved+)
+          (va0  +utf8-va0+)
+          (vbf  +utf8-vbf+)
           (prev-was-ed (if (zerop ed-init-state) 0 1))
           (ca0 0) (ca1 0) (ca2 0) (ca3 0))
       (declare (type fixnum loop-end)
@@ -282,9 +279,6 @@
               for bad   = (and (= prev-was-ed 1) (<= #xA0 byte #xBF))
               do (when (and (or ascii vlead) (not bad)) (incf chars))
                  (setf prev-was-ed (if (= byte #xED) 1 0)))
-        (values nil nil (the fixnum chars)))))
-
-  (defun count-chars-utf8-strict-avx512 (sap size &optional (ed-init-state 0))
-    (count-chars-utf8-strict-512 sap size ed-init-state)))
+        (values nil nil (the fixnum chars))))))
 
 ;;; kernels/chars.cl ends here

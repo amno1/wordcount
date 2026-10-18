@@ -42,11 +42,11 @@ echo "=========================================================="
                  (sap (sb-posix:mmap nil size sb-posix:prot-read sb-posix:map-private fd 0)))
             (sb-posix:posix-madvise sap size 3)
             (format t \"~%>>> 1. AVX-2 (Single-threaded pure compute):~%\")
-            (time (count-lines-words-and-chars-ascii sap size #xFF))
+            (time (count-lines-words-and-chars-ascii-avx2 sap size #xFF))
             (format t \"~%>>> 2. AVX-512 (Single-threaded pure compute):~%\")
             (time (count-lines-words-and-chars-ascii-avx512 sap size #xFF))
             (format t \"~%>>> 3. Generic Scalar (Single-threaded pure compute):~%\")
-            (time (count-lines-words-and-chars-ascii-generic sap size #xFF))
+            (time (count-lines-words-and-chars-ascii sap size #xFF))
             (sb-posix:munmap sap size)
             (sb-posix:close fd))"
 

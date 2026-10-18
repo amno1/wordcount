@@ -1,9 +1,5 @@
-;;; Standalone correctness test: kernels-avx2.cl (reference) vs.
-;;; kernels-generic.cl's plain-scalar "-GENERIC" kernels and
-;;; kernels-avx512.cl's sb-simd-based "-AVX512" kernels -- the
-;;; implementation wordcount.asd actually ships (kernels-assembly-512(-vops)
-;;; .lisp's raw-AVX-512 kernels are commented out of the real build, so
-;;; they aren't exercised here).
+;;; Standalone correctness test: base SWAR kernels vs.
+;;; sb-simd-based "-AVX2" kernels and "-AVX512" kernels.
 ;;; Uses PARACHUTE (DEFINE-TEST/IS), one test per kernel.
 ;;; Does not need the full wordcount ASDF system (no lparallel etc).
 ;;; Invoke from the wordcount/ root (see makefile's TEST target), not
@@ -48,21 +44,8 @@
 
 (in-package :wc)
 
-;; The AVX2 kernels, under their own (unsuffixed) names, are the
-;; reference every "-AVX512"/"-GENERIC" sibling gets checked against.
-(defparameter *avx2-refs*
-  (let ((h (make-hash-table)))
-    (dolist (name '(count-lines-ascii count-words-ascii count-chars-ascii
-                     count-lines-and-words-ascii count-lines-and-chars-ascii
-                     count-words-and-chars-ascii count-lines-words-and-chars-ascii
-                     count-chars-utf8 count-words-utf8
-                     count-lines-and-words-utf8 count-lines-and-chars-utf8
-                     count-words-and-chars-utf8 count-lines-words-and-chars-utf8
-                     count-chars-utf8-strict count-lines-and-chars-utf8-strict
-                     count-words-and-chars-utf8-strict
-                     count-lines-words-and-chars-utf8-strict))
-      (setf (gethash name h) (fdefinition name)))
-    h))
+;; The base SWAR kernels, under their own clean names, are the
+;; reference that the "-AVX2" and "-AVX512" siblings get checked against.
 
 (defmacro with-sap-from-bytes ((sap-var bytes) &body body)
   (let ((v (gensym)))
@@ -83,28 +66,26 @@
   (vector-push-extend (cons bytes more-args) *cases*)
   (1- (fill-pointer *cases*)))
 
-;; DEF-KERNEL-TEST: BASE-NAME is an unsuffixed kernels-avx2.cl name
+;; DEF-KERNEL-TEST: BASE-NAME is the clean base SWAR kernel name
 ;; (the reference). Defines <BASE-NAME>-AGREE-P, true iff its
-;; "-AVX512" and "-GENERIC" siblings both return exactly what the
-;; reference does for the case-id given, mirroring WC-TASKS.CL's
-;; KERNEL-CALL, which picks between the same three names at runtime,
-;; then a PARACHUTE test named BASE-NAME checking every id in CASE-IDS
-;; (from REGISTER, each pairing a byte buffer with whatever extra args,
-;; e.g. a WS-INIT-STATE, the kernel needs).
+;; "-AVX2" and "-AVX512" siblings both return exactly what the
+;; reference does for the case-id given, mirroring KERNEL-CALL,
+;; then a PARACHUTE test named BASE-NAME checking every id in CASE-IDS.
 (defmacro def-kernel-test (base-name case-ids)
   (let* ((s (string base-name))
          (checker (intern (concatenate 'string s "-AGREE-P")))
-         (avx512  (intern (concatenate 'string s "-AVX512")))
-         (generic (intern (concatenate 'string s "-GENERIC"))))
+         (avx2    (intern (concatenate 'string s "-AVX2")))
+         (avx512  (intern (concatenate 'string s "-AVX512"))))
     `(progn
        (defun ,checker (case-id)
          (destructuring-bind (bytes . more-args) (aref *cases* case-id)
            (with-sap-from-bytes (sap bytes)
              (let ((expected (multiple-value-list
-                              (apply (gethash ',base-name *avx2-refs*) sap (length bytes) more-args))))
-               (and (or (not (fboundp ',avx512))
-                        (equal expected (multiple-value-list (apply (fdefinition ',avx512) sap (length bytes) more-args))))
-                    (equal expected (multiple-value-list (apply #',generic sap (length bytes) more-args))))))))
+                              (apply #',base-name sap (length bytes) more-args))))
+               (and (or (not (fboundp ',avx2))
+                        (equal expected (multiple-value-list (apply (fdefinition ',avx2) sap (length bytes) more-args))))
+                    (or (not (fboundp ',avx512))
+                        (equal expected (multiple-value-list (apply (fdefinition ',avx512) sap (length bytes) more-args)))))))))
        (parachute:define-test ,base-name
          (dolist (id ,case-ids)
            (parachute:is eql t (,checker id)))))))
@@ -263,8 +244,9 @@
               ;; The sum with threaded carry matches total
               (parachute:is = total-chars (+ c1-chars c2-chars))
               ;; All backends agree on chunk2 with init-ed = 1
+              #+avx2
               (parachute:is eql t (equal (multiple-value-list (count-chars-utf8-strict c2-sap (length chunk2) 1))
-                                         (multiple-value-list (count-chars-utf8-strict-generic c2-sap (length chunk2) 1))))
+                                         (multiple-value-list (count-chars-utf8-strict-avx2 c2-sap (length chunk2) 1))))
               #+avx512
               (parachute:is eql t (equal (multiple-value-list (count-chars-utf8-strict c2-sap (length chunk2) 1))
                                          (multiple-value-list (count-chars-utf8-strict-avx512 c2-sap (length chunk2) 1)))))))))))

@@ -9,43 +9,41 @@
 
 (declaim (optimize (speed 3) (safety 0)))
 
-(declaim (inline count-lines-and-chars-ascii-generic
-                 count-lines-and-chars-utf8-generic
-                 count-lines-and-chars-utf8-strict-generic
-                 count-lines-and-chars-ascii
+(declaim (inline count-lines-and-chars-ascii
                  count-lines-and-chars-utf8
                  count-lines-and-chars-utf8-strict
+                 count-lines-and-chars-ascii-avx2
+                 count-lines-and-chars-utf8-avx2
+                 count-lines-and-chars-utf8-strict-avx2
                  #+avx512 count-lines-and-chars-ascii-avx512
-                 #+avx512 count-lines-and-chars-utf8-512
                  #+avx512 count-lines-and-chars-utf8-avx512
-                 #+avx512 count-lines-and-chars-utf8-strict-512
                  #+avx512 count-lines-and-chars-utf8-strict-avx512))
 
 
 ;;; Generic implementation
 
-(defun count-lines-and-chars-ascii-generic (sap size)
-  (values (nth-value 0 (count-lines-generic sap size)) nil size))
+(defun count-lines-and-chars-ascii (sap size)
+  (values (nth-value 0 (count-lines sap size)) nil size))
 
-(defun count-lines-and-chars-utf8-generic (sap size)
-  (values (nth-value 0 (count-lines-generic sap size))
+(defun count-lines-and-chars-utf8 (sap size)
+  (values (nth-value 0 (count-lines sap size))
           nil
-          (nth-value 2 (count-chars-utf8-generic sap size))))
+          (nth-value 2 (count-chars-utf8 sap size))))
 
-(defun count-lines-and-chars-utf8-strict-generic (sap size &optional (ed-init-state 0))
-  (values (nth-value 0 (count-lines-generic sap size))
+(defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
+  (values (nth-value 0 (count-lines sap size))
           nil
-          (nth-value 2 (count-chars-utf8-strict-generic sap size ed-init-state))))
+          (nth-value 2 (count-chars-utf8-strict sap size ed-init-state))))
 
 
 ;;; AVX2 implementation
 
-(defun count-lines-and-chars-ascii (sap size)
-  (values (count-lines-ascii sap size) nil size))
+(defun count-lines-and-chars-ascii-avx2 (sap size)
+  (values (count-lines-ascii-avx2 sap size) nil size))
 
 #+avx2
 (progn
-  (defun count-lines-and-chars-utf8 (sap size)
+  (defun count-lines-and-chars-utf8-avx2 (sap size)
     (declare (type fixnum size)
              (type sb-sys:system-area-pointer sap)
              (optimize (speed 3) (safety 0)))
@@ -103,7 +101,7 @@
                            nil
                            (the fixnum (+ chars tchars)))))))
 
-  (defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
+  (defun count-lines-and-chars-utf8-strict-avx2 (sap size &optional (ed-init-state 0))
     (declare (type fixnum size)
              (type (unsigned-byte 8) ed-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -183,10 +181,12 @@
 
 #-avx2
 (progn
-  (defun count-lines-and-chars-utf8 (sap size)
-    (count-lines-and-chars-utf8-generic sap size))
-  (defun count-lines-and-chars-utf8-strict (sap size &optional (ed-init-state 0))
-    (count-lines-and-chars-utf8-strict-generic sap size ed-init-state)))
+  (defun count-lines-and-chars-ascii-avx2 (sap size)
+    (count-lines-and-chars-ascii sap size))
+  (defun count-lines-and-chars-utf8-avx2 (sap size)
+    (count-lines-and-chars-utf8 sap size))
+  (defun count-lines-and-chars-utf8-strict-avx2 (sap size &optional (ed-init-state 0))
+    (count-lines-and-chars-utf8-strict sap size ed-init-state)))
 
 
 ;;; AVX-512 implementation
@@ -196,7 +196,7 @@
   (defun count-lines-and-chars-ascii-avx512 (sap size)
     (values (nth-value 0 (count-lines-ascii-avx512 sap size)) nil size))
 
-  (defun count-lines-and-chars-utf8-512 (sap size)
+  (defun count-lines-and-chars-utf8-avx512 (sap size)
     (declare (type fixnum size)
              (type sb-sys:system-area-pointer sap)
              (optimize (speed 3) (safety 0)))
@@ -232,10 +232,7 @@
                  (when (/= (logand byte #xC0) #x80) (incf chars)))
         (values (the fixnum lines) nil (the fixnum chars)))))
 
-  (defun count-lines-and-chars-utf8-avx512 (sap size)
-    (count-lines-and-chars-utf8-512 sap size))
-
-  (defun count-lines-and-chars-utf8-strict-512 (sap size &optional (ed-init-state 0))
+  (defun count-lines-and-chars-utf8-strict-avx512 (sap size &optional (ed-init-state 0))
     (declare (type fixnum size)
              (type (unsigned-byte 8) ed-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -282,9 +279,6 @@
               do (when (= byte 10) (incf lines))
                  (when (and (or ascii vlead) (not bad)) (incf chars))
                  (setf prev-was-ed (if (= byte #xED) 1 0)))
-        (values (the fixnum lines) nil (the fixnum chars)))))
-
-  (defun count-lines-and-chars-utf8-strict-avx512 (sap size &optional (ed-init-state 0))
-    (count-lines-and-chars-utf8-strict-512 sap size ed-init-state)))
+        (values (the fixnum lines) nil (the fixnum chars))))))
 
 ;;; kernels/lines-and-chars.cl ends here

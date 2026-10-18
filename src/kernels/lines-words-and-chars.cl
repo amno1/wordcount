@@ -9,42 +9,40 @@
 
 (declaim (optimize (speed 3) (safety 0)))
 
-(declaim (inline count-lines-words-and-chars-ascii-generic
-                 count-lines-words-and-chars-utf8-generic
-                 count-lines-words-and-chars-utf8-strict-generic
-                 count-lines-words-and-chars-ascii
+(declaim (inline count-lines-words-and-chars-ascii
                  count-lines-words-and-chars-utf8
                  count-lines-words-and-chars-utf8-strict
+                 count-lines-words-and-chars-ascii-avx2
+                 count-lines-words-and-chars-utf8-avx2
+                 count-lines-words-and-chars-utf8-strict-avx2
                  #+avx512 count-lines-words-and-chars-ascii-avx512
                  #+avx512 count-lines-words-and-chars-utf8-avx512
-                 #+avx512 count-lines-words-and-chars-utf8-strict-512
                  #+avx512 count-lines-words-and-chars-utf8-strict-avx512))
 
 
 ;;; Generic implementation
 
-(defun count-lines-words-and-chars-ascii-generic (sap size ws-init-state)
-  (values (nth-value 0 (count-lines-generic sap size))
-          (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
+(defun count-lines-words-and-chars-ascii (sap size ws-init-state)
+  (values (nth-value 0 (count-lines sap size))
+          (nth-value 1 (count-words-ascii sap size ws-init-state))
           size))
 
-(defun count-lines-words-and-chars-utf8-generic (sap size ws-init-state)
-  (values (nth-value 0 (count-lines-generic sap size))
-          (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
-          (nth-value 2 (count-chars-utf8-generic sap size))))
+(defun count-lines-words-and-chars-utf8 (sap size ws-init-state)
+  (values (nth-value 0 (count-lines sap size))
+          (nth-value 1 (count-words-ascii sap size ws-init-state))
+          (nth-value 2 (count-chars-utf8 sap size))))
 
-(defun count-lines-words-and-chars-utf8-strict-generic (sap size ws-init-state &optional (ed-init-state 0))
-  (values (nth-value 0 (count-lines-generic sap size))
-          (nth-value 1 (count-words-ascii-generic sap size ws-init-state))
-          (nth-value 2 (count-chars-utf8-strict-generic sap size ed-init-state))))
+(defun count-lines-words-and-chars-utf8-strict (sap size ws-init-state &optional (ed-init-state 0))
+  (values (nth-value 0 (count-lines sap size))
+          (nth-value 1 (count-words-ascii sap size ws-init-state))
+          (nth-value 2 (count-chars-utf8-strict sap size ed-init-state))))
 
 
 ;;; AVX2 implementation
 
 #+avx2
 (progn
-  (declaim (inline count-lines-words-and-chars-utf8-strict))
-  (defun count-lines-words-and-chars-utf8-strict (sap size ws-init-state &optional (ed-init-state 0))
+  (defun count-lines-words-and-chars-utf8-strict-avx2 (sap size ws-init-state &optional (ed-init-state 0))
     (declare (type fixnum size)
              (type (unsigned-byte 8) ws-init-state ed-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -142,7 +140,7 @@
                            (the fixnum (+ words twords))
                            (the fixnum (+ chars tchars)))))))
 
-  (defun count-lines-words-and-chars-utf8 (sap size ws-init-state)
+  (defun count-lines-words-and-chars-utf8-avx2 (sap size ws-init-state)
     (declare (type fixnum size)
              (type (unsigned-byte 8) ws-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -237,17 +235,20 @@
 
 #-avx2
 (progn
-  (defun count-lines-words-and-chars-utf8 (sap size ws-init-state)
-    (count-lines-words-and-chars-utf8-generic sap size ws-init-state))
-  (defun count-lines-words-and-chars-utf8-strict (sap size ws-init-state &optional (ed-init-state 0))
-    (count-lines-words-and-chars-utf8-strict-generic sap size ws-init-state ed-init-state)))
+  (defun count-lines-words-and-chars-ascii-avx2 (sap size ws-init-state)
+    (count-lines-words-and-chars-ascii sap size ws-init-state))
+  (defun count-lines-words-and-chars-utf8-avx2 (sap size ws-init-state)
+    (count-lines-words-and-chars-utf8 sap size ws-init-state))
+  (defun count-lines-words-and-chars-utf8-strict-avx2 (sap size ws-init-state &optional (ed-init-state 0))
+    (count-lines-words-and-chars-utf8-strict sap size ws-init-state ed-init-state)))
 
-(defun count-lines-words-and-chars-ascii (sap size ws-init-state)
+#+avx2
+(defun count-lines-words-and-chars-ascii-avx2 (sap size ws-init-state)
   (declare (type sb-sys:system-area-pointer sap)
            (type fixnum size)
            (type (unsigned-byte 8) ws-init-state)
            (optimize (speed 3) (safety 0)))
-  (multiple-value-bind (lines words) (count-lines-and-words-ascii sap size ws-init-state)
+  (multiple-value-bind (lines words) (count-lines-and-words-ascii-avx2 sap size ws-init-state)
     (values lines words size)))
 
 
@@ -255,8 +256,7 @@
 
 #+avx512
 (progn
-  (declaim (inline count-lines-words-and-chars-utf8-strict-512))
-  (defun count-lines-words-and-chars-utf8-strict-512 (sap size ws-init-state &optional (ed-init-state 0))
+  (defun count-lines-words-and-chars-utf8-strict-avx512 (sap size ws-init-state &optional (ed-init-state 0))
     (declare (type fixnum size)
              (type (unsigned-byte 8) ws-init-state ed-init-state)
              (type sb-sys:system-area-pointer sap)
@@ -317,9 +317,6 @@
                  (setf prev-was-ws (if is-ws 1 0)
                        prev-was-ed (if (= byte #xED) 1 0)))
         (values (the fixnum lines) (the fixnum words) (the fixnum chars)))))
-
-  (defun count-lines-words-and-chars-utf8-strict-avx512 (sap size ws-init-state &optional (ed-init-state 0))
-    (count-lines-words-and-chars-utf8-strict-512 sap size ws-init-state ed-init-state))
 
   (defun count-lines-words-and-chars-utf8-avx512 (sap size ws-init-state)
     (declare (type fixnum size)

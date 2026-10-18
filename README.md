@@ -303,8 +303,3 @@ into four vertical layers plus a horizontal set of kernel modules:
 
 GPL-3.0-or-later. See `wordcount.asd`.
 
----
-
-## Author
-
-Arthur Miller `<arthur.miller@live.com>`
