@@ -9,7 +9,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
-SBCL_BIN="/home/arthur/repos/sb-simd-512/run-sbcl.sh"
+SBCL_BIN="${SBCL_BIN:-"$ROOT_DIR/../../sb-simd-512/run-sbcl.sh"}"
+if [[ ! -x "$SBCL_BIN" ]]; then
+    SBCL_BIN="sbcl"
+fi
 
 FILE="${1:-"$ROOT_DIR/tests/plato1g.txt"}"
 

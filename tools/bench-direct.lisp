@@ -24,7 +24,8 @@
 (require :asdf)
 
 (load (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname)))
-(push (truename "/home/arthur/repos/cl/wordcount") asdf:*central-registry*)
+(let ((root (truename (merge-pathnames "../" (or *load-truename* *default-pathname-defaults*)))))
+  (pushnew root asdf:*central-registry* :test #'equal))
 (asdf:load-system "wordcount")
 
 (in-package :wc)
@@ -69,9 +70,14 @@
     (sb-posix:munmap sap size)
     (sb-posix:close fd)))
 
-(format t "Testing with direct sb-thread on plato1g.txt:~%")
-(dolist (nth (list 1 2 4 8 10 12 16 20))
-  (format t "~% ~A THREADS~%" nth)
-  (test-direct "/home/arthur/repos/cl/wordcount/tests/plato1g.txt" nth))
+(let* ((root (truename (merge-pathnames "../" (or *load-truename* *default-pathname-defaults*))))
+       (p1g (merge-pathnames "tests/plato1g.txt" root))
+       (file (if (probe-file p1g)
+                 p1g
+                 (merge-pathnames "tests/plato.org" root))))
+  (format t "Testing with direct sb-thread on ~A:~%" file)
+  (dolist (nth (list 1 2 4 8 10 12 16 20))
+    (format t "~% ~A THREADS~%" nth)
+    (test-direct (namestring file) nth)))
 
 ;;; bench-direct.cl ends here

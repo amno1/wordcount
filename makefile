@@ -1,5 +1,4 @@
-LISP := /home/arthur/repos/sb-simd-512/run-sbcl.sh
-#LISP := sbcl
+LISP ?= $(if $(wildcard ../../sb-simd-512/run-sbcl.sh),../../sb-simd-512/run-sbcl.sh,sbcl)
 
 LISPFLAGS := --noinform --no-userinit --non-interactive
 

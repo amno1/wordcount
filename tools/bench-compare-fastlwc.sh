@@ -9,7 +9,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 WC="$ROOT_DIR/wc"
-FASTLWC="/home/arthur/repos/fastlwc/bin/fastlwc-mt"
+FASTLWC_DIR="${FASTLWC_DIR:-"$ROOT_DIR/../../fastlwc"}"
+FASTLWC="${FASTLWC:-"$FASTLWC_DIR/bin/fastlwc-mt"}"
 
 if [[ ! -x "$WC" ]]; then
     echo "Building wc binary first..."
@@ -17,11 +18,11 @@ if [[ ! -x "$WC" ]]; then
 fi
 
 if [[ ! -x "$FASTLWC" ]]; then
-    if [[ -d "/home/arthur/repos/fastlwc" ]]; then
+    if [[ -d "$FASTLWC_DIR" ]]; then
         echo "Building fastlwc-mt first..."
-        make -C "/home/arthur/repos/fastlwc"
+        make -C "$FASTLWC_DIR"
     else
-        echo "Error: fastlwc directory not found at /home/arthur/repos/fastlwc"
+        echo "Error: fastlwc directory not found at $FASTLWC_DIR"
         exit 1
     fi
 fi

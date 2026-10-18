@@ -2,7 +2,8 @@
 (require :sb-posix)
 
 (load (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname)))
-(push (truename "/home/arthur/repos/cl/wordcount") asdf:*central-registry*)
+(let ((root (truename (merge-pathnames "../" (or *load-truename* *default-pathname-defaults*)))))
+  (pushnew root asdf:*central-registry* :test #'equal))
 (asdf:load-system "wordcount")
 
 (in-package :wc)
@@ -120,4 +121,10 @@
     (format t "Trial ~D: " (1+ i))
     (time (bench-lisp-array path))))
 
-(run-comparison "/home/arthur/repos/cl/wordcount/tests/plato1g.txt")
+(let* ((root (truename (merge-pathnames "../" (or *load-truename* *default-pathname-defaults*))))
+       (p1g (merge-pathnames "tests/plato1g.txt" root))
+       (file (if (probe-file p1g)
+                 p1g
+                 (merge-pathnames "tests/plato.org" root))))
+  (when (probe-file file)
+    (run-comparison (namestring file))))

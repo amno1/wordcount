@@ -307,18 +307,24 @@ call `shutdown-worker-pool` when done with parallel counting to prevent leaks.
 ### Per-file flow (`process-fd-mt`)
 
 1. `posix_fadvise(fd, 0, size, POSIX_FADV_SEQUENTIAL)`.
+
 2. Compute `blocks = ceil(size / chunk-size)`.
+
 3. Fill a `work-item` with the fd, size, block count, dispatch mask,
    char mode, and backend.
+
 4. Hand the work item to every worker, wake them with their start
    semaphores, and run worker 0 on the calling thread.
+
 5. Each worker iterates `for block from my_tid below blocks by nthreads`,
    `pread`s `[block * chunk-size - 1, (block + 1) * chunk-size)` — note
    the one-byte overlap: the byte *before* each block is read into a
    one-byte look-behind position so that `init-ws` / `init-ed` can be derived
    from the preceding block's last byte without inter-thread locking.
+
 6. The calling thread waits for `nthreads - 1` completions on the pool
    done-semaphore, then sums `t-lines`, `t-words`, `t-chars` across workers.
+
 7. If any worker signalled an error, the call returns
    `(values 0 0 0 size ERROR)`; otherwise the summed counts.
 
@@ -354,15 +360,18 @@ sbcl --noinform --non-interactive --load tests/test-avx512-kernels.lisp
 
 ## Performance notes
 
-- The 1 MiB default chunk size is tuned for modern L2 cache sizes (1 MiB per
-  core on AMD Zen 5). Benchmark your own file sizes and cache hierarchy.
-- Byte-only counting (`count-bytes-*`) never reads seekable files; it uses
-  `lseek` and returns immediately.
-- Multi-threading is enabled whenever `number-threads > 1`. With default settings
-  (8 threads, 1 MiB chunk size), 8 MiB is the empirical saturation point where every
-  worker gets 1 full block of work. Users can tune `number-threads` and `chunk-size`
-  to find the optimal break-even point for their hardware. See `tools/bench-threshold-report.md`
-  for the empirical threshold benchmark.
-- On AMD Zen 5 (10 cores / 20 threads), the utility achieves ~16.8 GB/s
-  single-thread AVX-512 and ~46.7 GB/s multi-threaded (~0.023 s wall time) on
-  a 1 GiB file. See the README benchmark section for details.
+The 1 MiB default chunk size is tuned for modern L2 cache sizes (1 MiB per
+core on AMD Zen 5). Benchmark your own file sizes and cache hierarchy.
+
+Byte-only counting (`count-bytes-*`) never reads seekable files; it uses
+`lseek` and returns immediately.
+
+Multi-threading is enabled whenever `number-threads > 1`. With default settings
+(8 threads, 1 MiB chunk size), 8 MiB is the empirical saturation point where every
+worker gets 1 full block of work. Users can tune `number-threads` and `chunk-size`
+to find the optimal break-even point for their hardware. See `tools/bench-threshold-report.md`
+for the empirical threshold benchmark.
+
+On AMD Zen 5 (10 cores / 20 threads), the utility achieves ~16.8 GB/s
+single-thread AVX-512 and ~46.7 GB/s multi-threaded (~0.023 s wall time) on
+a 1 GiB file. See the README benchmark section for details.

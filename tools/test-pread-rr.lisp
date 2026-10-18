@@ -2,7 +2,8 @@
 (require :sb-posix)
 
 (load (merge-pathnames "quicklisp/setup.lisp" (user-homedir-pathname)))
-(push (truename "/home/arthur/repos/cl/wordcount") asdf:*central-registry*)
+(let ((root (truename (merge-pathnames "../" (or *load-truename* *default-pathname-defaults*)))))
+  (pushnew root asdf:*central-registry* :test #'equal))
 (asdf:load-system "wordcount")
 
 (in-package :wc)
@@ -69,7 +70,12 @@
          (format t "Result: ~A lines, ~A words, ~A chars~%" total-lines total-words total-chars))))
     (sb-posix:close fd)))
 
-(format t "Running wc-pread-mt on plato1g.txt:~%")
-(dolist (nth (list 1 2 4 8 10 12))
-  (format t "~%=== ~A THREADS ===~%" nth)
-  (wc-pread-mt "/home/arthur/repos/cl/wordcount/tests/plato1g.txt" :nthreads nth))
+(let* ((root (truename (merge-pathnames "../" (or *load-truename* *default-pathname-defaults*))))
+       (p1g (merge-pathnames "tests/plato1g.txt" root))
+       (file (if (probe-file p1g)
+                 p1g
+                 (merge-pathnames "tests/plato.org" root))))
+  (format t "Running wc-pread-mt on ~A:~%" file)
+  (dolist (nth (list 1 2 4 8 10 12))
+    (format t "~%=== ~A THREADS ===~%" nth)
+    (wc-pread-mt (namestring file) :nthreads nth)))

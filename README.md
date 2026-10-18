@@ -37,16 +37,21 @@ C and C++ implementations use:
 
 1. **Vector processing** via AVX2 and AVX-512 (mask-register based, using
    `sb-simd` and a custom SBCL VOP for `popcnt`).
+
 2. **`pread(2)` instead of `read(2)`** — positional reads let workers access
    disjoint byte ranges of a regular file without any inter-thread
    coordination and without shifting a shared file offset.
+
 3. **Buffer reuse** and 64-byte alignment (`aligned_alloc`) so that SIMD
    loads are legal and caches behave.
+
 4. **L2-cache-sized chunks** — the default `--chunk-size` (1 MiB) and the
    suggested thread count (8–10 on a Zen 5 laptop) are chosen so each worker's
    working set stays resident in L2.
+
 5. **`posix_fadvise(POSIX_FADV_SEQUENTIAL)`** to nudge the kernel into
    aggressive readahead.
+
 6. **Instant process teardown in application mode** — on CLI exit, `_exit(2)`
    terminates the process immediately (`sb-ext:exit :abort t`), delegating
    thread joining, memory deallocation, and descriptor closing to the OS kernel
@@ -62,9 +67,11 @@ using the same algorithms. See [Comparison with fastlwc-mt](#comparison-with-fas
 
 ## Features
 
-- Line, word, byte and (ASCII / UTF-8) character counts.
+- Line, word, byte and character counts for ASCII and utf8 text
+
 - Strict UTF-8 mode (`--utf8-strict`) that rejects surrogate-half encodings
   (0xED followed by 0xA0–0xBF) and out-of-range lead bytes (< 0xC2 or > 0xF4).
+
 - Three interchangeable kernels per operation:
   - **Generic** — pure-Lisp SWAR (`logcount` on 64-bit masks, 8 bytes at a
     time). Always available. No CPU-feature dependency.
@@ -75,11 +82,14 @@ using the same algorithms. See [Comparison with fastlwc-mt](#comparison-with-fas
     `mask8.64`, `mask64-bits`, `fpopcount`). Emitted when the build host
     advertises AVX-512 *and* the SBCL/sb-simd tree provides the AVX-512
     instruction-set additions.
+
 - Multi-threaded scheduler with a reusable worker pool and `pread`-based
   block scheduling, falling back to a single-threaded linear read loop when
-  `number-threads ≤ 1` or when reading from non-seekable streams.
+  `number-threads ≤ 1` or when reading from non-seekable streams
+
 - Runtime kernel selection via `--implementation` and a dispatch table,
   so the same binary can exercise all available kernels for benchmarking.
+
 - Standardized public API (see `docs/library-manual.md`) with three tiers:
   raw SAP pointers, file descriptors, and paths.
 
@@ -89,15 +99,17 @@ using the same algorithms. See [Comparison with fastlwc-mt](#comparison-with-fas
 
 - **SBCL** (the system uses `sb-sys:system-area-pointer`, `sb-thread`,
   `sb-posix`, and defines a custom VOP — see `docs/sbcl-notes.md`).
-- **[`sb-simd`](https://github.com/martin-mx/sb-simd)**, for the AVX2 path.
-- **A custom SBCL / sb-simd tree for AVX-512.** The AVX-512 backends depend
-  on instruction-set additions (`avx512bw:u8.64`, mask types, `fpopcount`)
-  that require the `evec` encoder branch in SBCL. The author maintains a branch
-  that provides this; you must build SBCL against that branch if you want the
-  AVX-512 kernels to compile.
+
+- **A custom SBCL / sb-simd tree for AVX-512.** The AVX-512 backends depend on
+  instruction-set additions (`avx512bw:u8.64`, mask types, `fpopcount`) that
+  require the `evec` encoder branch in SBCL. The author maintains [a branch that
+  provides this](https://github.com/amno1/sbcl); you must build SBCL against
+  that branch if you want the AVX-512 kernels to compile.
+
 - [`with-user-abort`](https://github.com/compufox/with-user-abort) and `uiop`
   (pulled in automatically as ASDF dependencies).
-- Linux/Unix for `sb-posix` and `pread`.
+
+- Linux/Unix for `sb-posix` and `pread` (not tested on other OS:s).
 
 > If you do **not** have the custom SBCL branch, everything still builds:
 > `#+avx512` is simply off, and the AVX-512 kernels fall back to AVX2 or generic
@@ -164,7 +176,7 @@ Run `./wc --help` for the full option list, or see
 
 ### Test Environment
 
-- **CPU:** AMD Ryzen AI 9 365 w/ Radeon 880M (Zen 5 architecture: 10 cores / 20 threads [4 Zen 5 + 6 Zen 5c], 10 MiB L2 cache, 24 MiB L3 cache, up to 5.09 GHz)
+- **CPU:** AMD Ryzen AI 9 365 (Zen 5 architecture: 10 cores / 20 threads [4 Zen 5 + 6 Zen 5c], 10 MiB L2 cache, 24 MiB L3 cache, up to 5.09 GHz)
 - **OS:** CachyOS Linux x86_64 (Kernel 7.2.10-1-cachyos, rolling release)
 - **Workload:** 1 GiB text file (`tests/plato1g.txt`, 1,073,979,760 bytes, 23,220,400 lines, 195,711,880 words)
 
@@ -262,10 +274,12 @@ into four vertical layers plus a horizontal set of kernel modules:
 
 - The **public API** (`src/api.cl`) exposes the functionality across three
   tiers: raw memory buffers (SAP), file descriptors (FD), and filesystem paths.
+
 - The **kernels** are pure functions of `(sap, length, carry-state) →
   (values lines words chars)`. They perform no I/O. This allows
   `process-fd-mt` to parallelize cleanly: each worker calls the same kernel on
   its disjoint block, and the scheduler aggregates the results.
+
 - The **carry state** (`init-ws`, `init-ed`) threads per-block context so
   that a block boundary that lands mid-UTF-8-sequence or between two
   whitespace bytes is counted without error. See
@@ -275,13 +289,13 @@ into four vertical layers plus a horizontal set of kernel modules:
 
 ## Documentation
 
-- [`docs/user-manual.md`](docs/user-manual.md) — the CLI, every option, examples,
-  and differences from GNU `wc`.
-- [`docs/library-manual.md`](docs/library-manual.md) — the three API tiers,
-  kernel families, backend selection, threading model, and symbol reference.
-- [`docs/sbcl-notes.md`](docs/sbcl-notes.md) — SBCL-specific internals:
-  feature detection, the `fpopcount` VOP, the extended `sb-posix` layer,
-  `sb-simd` namespaces, thread primitives, foreign memory, and the AVX-512 build.
+[`docs/user-manual.md`](docs/user-manual.md) — the CLI, optiona, examples, and
+  differences from GNU `wc`.
+  
+[`docs/library-manual.md`](docs/library-manual.md) — the three API tiers, kernel
+  families, backend selection, threading model, and symbol reference.
+
+[`docs/sbcl-notes.md`](docs/sbcl-notes.md) — SBCL-specific internals in use
 
 ---
 
