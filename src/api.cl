@@ -69,10 +69,10 @@
   (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
   (nth-value 0 (kernel-call count-lines-ascii (resolve-implementation implementation) sap size)))
 
-(defun count-words-sap (sap size &key (implementation :auto) (init-ws #xFF))
+(defun count-words-sap (sap size &key (implementation :auto))
   "Count whitespace-delimited words in SAP buffer."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws))
-  (nth-value 1 (kernel-call count-words-ascii (resolve-implementation implementation) sap size init-ws)))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
+  (nth-value 1 (kernel-call count-words-ascii (resolve-implementation implementation) sap size #xFF)))
 
 (defun count-chars-ascii-sap (sap size &key (implementation :auto))
   "Count ASCII characters in SAP buffer."
@@ -84,21 +84,21 @@
   (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
   (nth-value 2 (kernel-call count-chars-utf8 (resolve-implementation implementation) sap size)))
 
-(defun count-chars-utf8-strict-sap (sap size &key (implementation :auto) (init-ed 0))
+(defun count-chars-utf8-strict-sap (sap size &key (implementation :auto))
   "Count valid UTF-8 characters rejecting surrogate codepoints in SAP buffer."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ed))
-  (nth-value 2 (kernel-call count-chars-utf8-strict (resolve-implementation implementation) sap size init-ed)))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
+  (nth-value 2 (kernel-call count-chars-utf8-strict (resolve-implementation implementation) sap size 0)))
 
 (defun count-bytes-sap (sap size &key (implementation :auto))
   "Count bytes in SAP buffer."
   (declare (ignore sap implementation) (type fixnum size))
   size)
 
-(defun count-lines-and-words-sap (sap size &key (implementation :auto) (init-ws #xFF))
+(defun count-lines-and-words-sap (sap size &key (implementation :auto))
   "Count lines and words in SAP buffer. Returns (VALUES LINES WORDS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
   (multiple-value-bind (l w)
-      (kernel-call count-lines-and-words-ascii (resolve-implementation implementation) sap size init-ws)
+      (kernel-call count-lines-and-words-ascii (resolve-implementation implementation) sap size #xFF)
     (values l w)))
 
 (defun count-lines-and-chars-ascii-sap (sap size &key (implementation :auto))
@@ -117,52 +117,52 @@
     (declare (ignore _))
     (values l c)))
 
-(defun count-lines-and-chars-utf8-strict-sap (sap size &key (implementation :auto) (init-ed 0))
+(defun count-lines-and-chars-utf8-strict-sap (sap size &key (implementation :auto))
   "Count lines and strict UTF-8 characters in SAP buffer. Returns (VALUES LINES CHARS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ed))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
   (multiple-value-bind (l _ c)
-      (kernel-call count-lines-and-chars-utf8-strict (resolve-implementation implementation) sap size init-ed)
+      (kernel-call count-lines-and-chars-utf8-strict (resolve-implementation implementation) sap size 0)
     (declare (ignore _))
     (values l c)))
 
-(defun count-words-and-chars-ascii-sap (sap size &key (implementation :auto) (init-ws #xFF))
+(defun count-words-and-chars-ascii-sap (sap size &key (implementation :auto))
   "Count words and ASCII characters in SAP buffer. Returns (VALUES WORDS CHARS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
   (multiple-value-bind (_ w c)
-      (kernel-call count-words-and-chars-ascii (resolve-implementation implementation) sap size init-ws)
+      (kernel-call count-words-and-chars-ascii (resolve-implementation implementation) sap size #xFF)
     (declare (ignore _))
     (values w c)))
 
-(defun count-words-and-chars-utf8-sap (sap size &key (implementation :auto) (init-ws #xFF))
+(defun count-words-and-chars-utf8-sap (sap size &key (implementation :auto))
   "Count words and UTF-8 characters in SAP buffer. Returns (VALUES WORDS CHARS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
   (multiple-value-bind (_ w c)
-      (kernel-call count-words-and-chars-utf8 (resolve-implementation implementation) sap size init-ws)
+      (kernel-call count-words-and-chars-utf8 (resolve-implementation implementation) sap size #xFF)
     (declare (ignore _))
     (values w c)))
 
-(defun count-words-and-chars-utf8-strict-sap (sap size &key (implementation :auto) (init-ws #xFF) (init-ed 0))
+(defun count-words-and-chars-utf8-strict-sap (sap size &key (implementation :auto))
   "Count words and strict UTF-8 characters in SAP buffer. Returns (VALUES WORDS CHARS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws init-ed))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
   (multiple-value-bind (_ w c)
-      (kernel-call count-words-and-chars-utf8-strict (resolve-implementation implementation) sap size init-ws init-ed)
+      (kernel-call count-words-and-chars-utf8-strict (resolve-implementation implementation) sap size #xFF 0)
     (declare (ignore _))
     (values w c)))
 
-(defun count-lines-words-and-chars-ascii-sap (sap size &key (implementation :auto) (init-ws #xFF))
+(defun count-lines-words-and-chars-ascii-sap (sap size &key (implementation :auto))
   "Count lines, words, and ASCII characters in SAP buffer. Returns (VALUES LINES WORDS CHARS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws))
-  (kernel-call count-lines-words-and-chars-ascii (resolve-implementation implementation) sap size init-ws))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
+  (kernel-call count-lines-words-and-chars-ascii (resolve-implementation implementation) sap size #xFF))
 
-(defun count-lines-words-and-chars-utf8-sap (sap size &key (implementation :auto) (init-ws #xFF))
+(defun count-lines-words-and-chars-utf8-sap (sap size &key (implementation :auto))
   "Count lines, words, and UTF-8 characters in SAP buffer. Returns (VALUES LINES WORDS CHARS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws))
-  (kernel-call count-lines-words-and-chars-utf8 (resolve-implementation implementation) sap size init-ws))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
+  (kernel-call count-lines-words-and-chars-utf8 (resolve-implementation implementation) sap size #xFF))
 
-(defun count-lines-words-and-chars-utf8-strict-sap (sap size &key (implementation :auto) (init-ws #xFF) (init-ed 0))
+(defun count-lines-words-and-chars-utf8-strict-sap (sap size &key (implementation :auto))
   "Count lines, words, and strict UTF-8 characters in SAP buffer. Returns (VALUES LINES WORDS CHARS)."
-  (declare (type sb-sys:system-area-pointer sap) (type fixnum size) (type (unsigned-byte 8) init-ws init-ed))
-  (kernel-call count-lines-words-and-chars-utf8-strict (resolve-implementation implementation) sap size init-ws init-ed))
+  (declare (type sb-sys:system-area-pointer sap) (type fixnum size))
+  (kernel-call count-lines-words-and-chars-utf8-strict (resolve-implementation implementation) sap size #xFF 0))
 
 
 ;;; Tier 2 & 3: FD and Path counters

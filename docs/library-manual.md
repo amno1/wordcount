@@ -7,13 +7,15 @@ exports a public counting API suitable for embedding in other Common Lisp
 programs. The API is organized in three *tiers* — SAP, FD, and Path —
 so you can choose the level of abstraction you need:
 
-- **SAP tier** — operate directly on raw foreign-memory byte buffers. No I/O,
+**SAP tier** — operate directly on raw foreign-memory byte buffers. No I/O,
   no file handling. The kernels are pure functions of
   `(sap, length, carry-state) → (values lines words chars)`.
-- **FD tier** — operate on file descriptors. Handles seekable files
+
+**FD tier** — operate on file descriptors. Handles seekable files
   with `pread` (multi-threaded) and non-seekable streams with `read` (linear),
   picks single- or multi-threaded scheduling, and returns standardized per-file counts.
-- **Path tier** — a high-level wrapper around the FD tier that manages opening
+
+**Path tier** — a high-level wrapper around the FD tier that manages opening
   and closing the file for you.
 
 The system is SBCL-specific. See [`sbcl-notes.md`](sbcl-notes.md) for
@@ -21,11 +23,11 @@ the full list of SBCL extensions the library depends on.
 
 ## Packages
 
-| Package      | Nickname | Purpose                                              |
-|--------------|----------|------------------------------------------------------|
-| `wordcount`  | `wc`     | Public API. All exported symbols live here.          |
-| `wordcount.system` | —  | Only used during ASDF system definition.             |
-| `wc-benchmark` | `wcb`  | Benchmark harness (exports `wc-simple`, `wc-suite`). |
+| Package            | Nickname | Purpose                                              |
+|--------------------|----------|------------------------------------------------------|
+| `wordcount`        | `wc`     | Public API. All exported symbols live here.          |
+| `wordcount.system` | —        | Only used during ASDF system definition.             |
+| `wc-benchmark`     | `wcb`    | Benchmark harness (exports `wc-simple`, `wc-suite`). |
 
 The `wordcount` package `:use`s `cl`, `with-user-abort`, and (when AVX2 is
 available) `sb-simd-avx2`. It uses `:local-nicknames` to bring in
@@ -45,10 +47,10 @@ Single counters return a single count:
 
 ```lisp
 (count-lines-sap sap size &key implementation)               ; => lines
-(count-words-sap sap size &key implementation init-ws)       ; => words
+(count-words-sap sap size &key implementation)               ; => words
 (count-chars-ascii-sap sap size &key implementation)         ; => chars
 (count-chars-utf8-sap sap size &key implementation)          ; => chars
-(count-chars-utf8-strict-sap sap size &key implementation init-ed) ; => chars
+(count-chars-utf8-strict-sap sap size &key implementation)   ; => chars
 (count-bytes-sap sap size &key implementation)               ; => size
 ```
 
@@ -56,32 +58,32 @@ Combined counters compute multiple metrics simultaneously and return multiple va
 
 ```lisp
 ;; Lines and words
-(count-lines-and-words-sap sap size &key implementation init-ws)
+(count-lines-and-words-sap sap size &key implementation)
   ;; => (values lines words)
 
 ;; Lines and characters
 (count-lines-and-chars-ascii-sap sap size &key implementation)
 (count-lines-and-chars-utf8-sap sap size &key implementation)
-(count-lines-and-chars-utf8-strict-sap sap size &key implementation init-ed)
+(count-lines-and-chars-utf8-strict-sap sap size &key implementation)
   ;; => (values lines chars)
 
 ;; Words and characters
-(count-words-and-chars-ascii-sap sap size &key implementation init-ws)
-(count-words-and-chars-utf8-sap sap size &key implementation init-ws)
-(count-words-and-chars-utf8-strict-sap sap size &key implementation init-ws init-ed)
+(count-words-and-chars-ascii-sap sap size &key implementation)
+(count-words-and-chars-utf8-sap sap size &key implementation)
+(count-words-and-chars-utf8-strict-sap sap size &key implementation)
   ;; => (values words chars)
 
 ;; Lines, words, and characters
-(count-lines-words-and-chars-ascii-sap sap size &key implementation init-ws)
-(count-lines-words-and-chars-utf8-sap sap size &key implementation init-ws)
-(count-lines-words-and-chars-utf8-strict-sap sap size &key implementation init-ws init-ed)
+(count-lines-words-and-chars-ascii-sap sap size &key implementation)
+(count-lines-words-and-chars-utf8-sap sap size &key implementation)
+(count-lines-words-and-chars-utf8-strict-sap sap size &key implementation)
   ;; => (values lines words chars)
 ```
 
 SAP functions do not open, read, or close anything. The buffer must be
 readable for `size` bytes for the duration of the call. There is no
 protection against reading past `size` other than the function's own
-bounds arithmetic.
+bounds arithmetic (yes, you can and will segfault if you are not careful).
 
 To call a SAP function on a Lisp `(vector (unsigned-byte 8))`, pin the vector:
 
@@ -130,13 +132,17 @@ The FD tier:
 - Detects seekability with `lseek`. Seekable files are read with
   `pread` (parallel) or `read` (linear); non-seekable descriptors use
   `read` in a linear loop.
+
 - Applies `posix_fadvise(POSIX_FADV_SEQUENTIAL)` on the seekable path
   to hint the kernel for readahead.
+
 - Short-circuits to `lseek(SEEK_END) - lseek(SEEK_CUR)` if only bytes
   were requested (`count-bytes-fd`). On seekable files, the file offset is preserved
   and no file read is performed.
+
 - Uses the single-threaded path when `number-threads ≤ 1` or when the input
   is non-seekable.
+
 - Does **not** close `fd`.
 
 ### Path tier
@@ -207,29 +213,33 @@ Within each family, three variants exist:
 
 The character modes are:
 
-| Suffix            | Mode          | Behaviour                                                 |
-|-------------------|---------------|-----------------------------------------------------------|
-| `-ascii`          | ASCII         | Every byte is one character.                              |
-| `-utf8`           | Lenient UTF-8 | Counts bytes where `(byte & 0xC0) != 0x80`. Skips continuation bytes. Does not validate lead bytes. |
-| `-utf8-strict`    | Strict UTF-8  | Counts bytes that are ASCII or in `0xC2`–`0xF4`, *except* when the byte follows an `0xED` lead and is in `0xA0`–`0xBF` (surrogate halves). |
 
-### Carry state
+`-ascii`: Every byte is one ASCII character.
 
-When a buffer is partitioned across multiple calls (e.g. one per thread
-in the multithreaded scheduler, or one per `read()` in the linear
-scheduler), two pieces of state must be threaded across block boundaries:
+`-utf8` : "Fast" (lenient) UTF-8 - Counts bytes where `(byte & 0xC0) != 0x80`.
+          Skips continuation bytes. Does not validate lead bytes.
 
-- **`init-ws`** — an `(unsigned-byte 8)`, `#xFF` if the last byte of the
-  previous block was whitespace (or this is the start of the file),
-  `#x00` otherwise. Used by word-counting kernels to detect a word
-  start that straddles the boundary.
-- **`init-ed`** — an `(unsigned-byte 8)`, `1` if the last byte of the
-  previous block was `0xED`, `0` otherwise. Used by strict-UTF-8 kernels
-  to reject a surrogate-half sequence that straddles the boundary.
+`-utf8-strict`: Counts bytes that are ASCII or in `0xC2`–`0xF4`, *except* when
+                the byte follows an `0xED` lead and is in `0xA0`–`0xBF` (surrogate halves).
 
-`process-fd-linear` and `process-fd-mt` derive both from the last byte of
-each block; the SAP tier exposes them as keyword arguments so you can do
-the same when calling kernels directly.
+### Internal chunk-boundary carry state
+
+When a file or stream is partitioned across multiple blocks (by worker threads
+in `process-fd-mt` or across sequential reads in `process-fd-linear`), two pieces
+of internal state are threaded across block boundaries:
+
+- **`init-ws`** — an `(unsigned-byte 8)`, `#xFF` if the byte immediately before
+  the current block was whitespace (or start of file), `#x00` otherwise. Used
+  by word-counting kernels to detect whether a word start straddles the block
+  boundary.
+
+- **`init-ed`** — an `(unsigned-byte 8)`, `1` if the byte immediately before the
+  current block was `0xED`, `0` otherwise. Used by strict-UTF-8 kernels to
+  detect and reject surrogate-half sequences that straddle the block boundary.
+
+Both values are automatically managed internally by `process-fd-linear` and
+`process-fd-mt` via `dispatch-kernel`. The public API (SAP, FD, and Path tiers)
+does not expose these implementation details.
 
 ---
 
@@ -348,12 +358,11 @@ sbcl --noinform --non-interactive --load tests/test-avx512-kernels.lisp
   core on AMD Zen 5). Benchmark your own file sizes and cache hierarchy.
 - Byte-only counting (`count-bytes-*`) never reads seekable files; it uses
   `lseek` and returns immediately.
-- Multi-threading is enabled whenever `number-threads > 1` and `size > chunk-size`
-  (at least two blocks). With default settings (8 threads, 1 MiB chunk size), 8 MiB
-  is the empirical saturation point where every worker gets 1 full block of work.
-  Users can tune `number-threads` and `chunk-size` to find the optimal break-even
-  point for their hardware. See `tools/bench-threshold-report.md` for the empirical
-  threshold benchmark.
+- Multi-threading is enabled whenever `number-threads > 1`. With default settings
+  (8 threads, 1 MiB chunk size), 8 MiB is the empirical saturation point where every
+  worker gets 1 full block of work. Users can tune `number-threads` and `chunk-size`
+  to find the optimal break-even point for their hardware. See `tools/bench-threshold-report.md`
+  for the empirical threshold benchmark.
 - On AMD Zen 5 (10 cores / 20 threads), the utility achieves ~16.8 GB/s
   single-thread AVX-512 and ~46.7 GB/s multi-threaded (~0.023 s wall time) on
   a 1 GiB file. See the README benchmark section for details.

@@ -99,10 +99,10 @@ Users can experiment with any thread count and chunk size on their hardware.
 `--total=WHEN`
   Control when the total line is printed: `auto` (default), `always`,
   `never`, or `only`.
-  - `auto` — print the `total` line iff more than one input was processed.
+  - `auto`   — print the `total` line iff more than one input was processed.
   - `always` — always print it.
-  - `never` — never print it.
-  - `only` — print *only* the total; suppress per-file lines.
+  - `never`  — never print it.
+  - `only`   — print *only* the total; suppress per-file lines.
 
 ### File-list input
 
@@ -250,13 +250,17 @@ counting) differs.
 
 ### Compatibility with GNU `wc`
 
-- The exact per-file error-message wording and the formatting spacing of the
-  `total` line differ slightly. Numeric columns are formatted to width 8 with a
-  separating space.
-- When both `-c` and `-m` are given, current `wc` prints *both* byte and
-  character columns. Some older GNU `wc` versions printed only one.
-- `--files0-from` with an empty file list exits 0 without reading stdin,
-  matching current GNU `wc`.
-- Command-line compatibility with GNU `wc` is a goal but not a hard
-  guarantee; the option set above is the authoritative list.
-- -L option (line width in printed columns) is not implemented
+The exact per-file error-message wording and the formatting spacing of the
+`total` line differ slightly. Numeric columns are formatted to width 8 with
+a separating space.
+
+When both `-c` and `-m` are given, current `wc` prints *both* byte and
+character columns. Some older GNU `wc` versions printed only one.
+
+`--files0-from` with an empty file list exits 0 without reading stdin,
+matching current GNU `wc`.
+
+Command-line compatibility with GNU `wc` is a goal but not a hard
+guarantee; the option set above is the authoritative list.
+
+-L option (line width in printed columns) is not implemented
