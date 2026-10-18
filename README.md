@@ -34,51 +34,48 @@ code in Lisp that runs at the same speed as hand-tuned C/C++. I have been toying
 with this one since May 2026, and it led me to implement support for an AVX-512
 backend in SBCL. 
 
-Unusually for me, but I am actually quite happy with this :). I think it serves
-both as a demo that the backend works as intended, but also demoes that writing
-fast programs is not so much a question of language, but more of what you do
+Unusually for me, but I am actually happy with this :). I think it serves
+both as a demo that the backend works as intended, but also shows that writing
+fast programs is not so much question of a language, but more of what you do
 with that language.  Instrumental here was also a compiler that gives me
 unrestrictied access to the machine, similar as C or C++ compilers do.  I am no
 longer sure this is Lisp, I think this is rather C in Lisp clothes.  I guess
 when in Rome, do as the Romans do! In this case it translates to doing in Lisp
 what you would normally do in C: low-level access to the machine and the OS, and
-writing some inline assembly. By doing that, we are perhaps no longer in the
-land of Lisp, even if we express the computations in Lisp notataion. I don't
+writing some inline assembly. By doing so, we are perhaps no longer in the
+land of Lisp, even if the expressed computations are in Lisp notation. I don't
 know to be honest, I'll left that for the discussion.
 
-The interesting parts here are nothing special; everything you will find here is
+The interesting parts here are not so special; everything you will find here is
 regularly done in C or C++. I believe I am just the first one to write all of
 this in SBCL and Common Lisp, at least to this degree. The most important
-techniques used to get the throughput as achieved, is **vector processing** via
-AVX2 and AVX-512 (mask-register based, using `sb-simd` and a custom SBCL VOP for
-`popcnt`) and access to the OS, notably for **`pread(2)`** — positional reads
+techniques used to get the throughput as achieved, is vector processing via AVX2
+and AVX-512 and direct access to the OS, notably for `pread(2)` — positional reads
 let workers access disjoint byte ranges of a regular file without any
 inter-thread coordination and without shifting a shared file offset. Those two
 are enablers.
 
 There are of course a bunch of other classical tricks you would normally do to
-make a program effectively use a machine: **buffer reuse** and 64-byte alignment
-(`aligned_alloc`) so that SIMD loads are legal and caches
-behave. **L2-cache-sized chunks** — the default `--chunk-size` (1 MiB) and the
+make a program effectively use a machine: buffer reuse and 64-byte alignment
+(`aligned_alloc`) so that SIMD loads are fast and caches
+behave. L2-cache-sized chunks — the default `--chunk-size` (1 MiB) and the
 suggested thread count (8–10 on a Zen 5 laptop) are chosen so each worker's
 working set stays resident in L2.
 
-In other words, we do what you would normally do in C or C++, nothing
-extravagant really. However, what is unusual here is to do it from a managed
-runtime, as Common Lisp normally is. Here SBCL is instrumental because it lets
-us escape that managed runtime when we have to, by giving us access to raw
-memory and to the compiler internals themselves. I think it is an unusual
-combination of a high-level managed runtime and a low-level machine access. The
-price is of course, the same one we pay in C and C++ (or "unsafe" Rust): with
-great power also comes responsibility. If you are not careful you can easily
-shoot yourself in the foot, or segfault, to be more precise.
+Here SBCL is instrumental because it lets us escape that managed runtime when we
+have to, by giving us access to raw memory and to the compiler internals
+themselves. I think it is an unusual combination of a high-level managed runtime
+and a low-level machine access. The price is of course, the same one we pay in C
+and C++ (or "unsafe" Rust): with great power also comes responsibility. If you
+are not careful you can easily shoot yourself in the foot, or segfault, to be
+more precise.
 
 It is significant because it shows we don't have to drop into C or C++ for the
 speed. Normally, when we need more speed in Lisp, the custom is to write it in
 C. Hopefully this shows that, with SBCL, it is not necessary. If you want to
-reuse a library written in another language, you still have to use FFI, but this
-project shows that we can go hand in hand with hand-tuned C++, which I think is
-cool.
+reuse a library written in another language, or make a system call, you still
+have to use FFI, but this project shows that we can go hand in hand with
+hand-tuned C++, which I think is cool.
 
 ---
 
@@ -337,7 +334,7 @@ there are some extra options, notably allowing you to tune execution for your CP
 [`docs/user-manual.md`](docs/user-manual.md) — the CLI, options, examples, and
   differences from GNU `wc`.
 
-The public API is documented below:
+The public API documentations:
 
 [`docs/library-manual.md`](docs/library-manual.md) — the three API tiers, kernel
   families, backend selection, threading model, and symbol reference.
@@ -353,10 +350,3 @@ part.
 ## License
 
 GPL-3.0-or-later. See `wordcount.asd`.
-
----
-
-## Author
-
-Arthur Miller (<arthur.miller@live.com>)
-
