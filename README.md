@@ -1,9 +1,8 @@
 # wordcount — a GNU wc clone in Common Lisp
 
-A SIMD-accelerated reimplementation of GNU `wc`, written in SBCL Common Lisp,
-with three interchangeable backends — generic SWAR, AVX2, and AVX-512 — and a
-multi-threaded scheduler that reads files with `pread` so that each worker
-touches a different block of the same file in parallel.
+A multithreaded, SIMD-accelerated reimplementation of GNU `wc`, written in SBCL
+Common Lisp, with three interchangeable backends — generic SWAR, AVX2, and
+AVX-512.
 
 > **Status: work in progress / experimental.**
 > This is the synthesis of a series of performance experiments rather than a
@@ -30,49 +29,71 @@ touches a different block of the same file in parallel.
 
 ## Motivation
 
-The project started as an attempt to answer one question: *can Common Lisp
-run word-counting code at the same speed as hand-tuned C/C++?* The interesting
-answer is not just “yes” — the fast paths here come from the same techniques
-C and C++ implementations use:
+The project started as a learning project and an attempt to show that we can write
+code in Lisp that runs at the same speed as hand-tuned C/C++. I have been toying
+with this one since May 2026, and it led me to implement support for an AVX-512
+backend in SBCL. 
 
-1. **Vector processing** via AVX2 and AVX-512 (mask-register based, using
-   `sb-simd` and a custom SBCL VOP for `popcnt`).
+Unusually for me, but I am actually quite happy with this :). I think it serves
+both as a demo that the backend works as intended. But it also demoes that
+writing fast programs is not so much a question of language, but more of what
+you do with that language.  Instrumental here was also a compiler that gives me
+unrestrictied access to the machine, similar as C or C++ compilers do.  I am no
+longer sure this is Lisp, I think this is rather C in Lisp clothes.  I guess
+when in Rome, do as the Romans do! In this case it translates to doing in Lisp
+what you would normally do in C: low-level access to the machine and the OS, and
+writing some inline assembly. By doing that, we are perhaps no longer in the
+land of Lisp, even if we express the computations in Lisp notataion. I don't
+know to be honest, I'll left that for the discussion.
 
-2. **`pread(2)` instead of `read(2)`** — positional reads let workers access
-   disjoint byte ranges of a regular file without any inter-thread
-   coordination and without shifting a shared file offset.
+The interesting parts here are nothing special; everything you will find here is
+regularly done in C or C++. I believe I am just the first one to write all of
+this in SBCL and Common Lisp, at least to this degree. The most important
+techniques used to get the throughput as achieved, is **vector processing** via
+AVX2 and AVX-512 (mask-register based, using `sb-simd` and a custom SBCL VOP for
+`popcnt`) and access to the OS, notably for **`pread(2)`** — positional reads
+let workers access disjoint byte ranges of a regular file without any
+inter-thread coordination and without shifting a shared file offset. Those two
+are enablers.
 
-3. **Buffer reuse** and 64-byte alignment (`aligned_alloc`) so that SIMD
-   loads are legal and caches behave.
+There are of course a bunch of other classical tricks you would normally do to
+make a program effectively use a machine: **buffer reuse** and 64-byte alignment
+(`aligned_alloc`) so that SIMD loads are legal and caches
+behave. **L2-cache-sized chunks** — the default `--chunk-size` (1 MiB) and the
+suggested thread count (8–10 on a Zen 5 laptop) are chosen so each worker's
+working set stays resident in L2.
 
-4. **L2-cache-sized chunks** — the default `--chunk-size` (1 MiB) and the
-   suggested thread count (8–10 on a Zen 5 laptop) are chosen so each worker's
-   working set stays resident in L2.
+In other words, we do what you would normally do in C or C++, nothing
+extravagant really. However, what is unusual here is to do it from a managed
+runtime, as Common Lisp normally is. Here SBCL is instrumental because it lets
+us escape that managed runtime when we have to, by giving us access to raw
+memory and to the compiler internals themselves. I think it is an unusual
+combination of a high-level managed runtime and a low-level machine access. The
+price is of course, the same one we pay in C and C++ (or "unsafe" Rust): with
+great power also comes responsibility. If you are not careful you can easily
+shoot yourself in the foot, or segfault, to be more precise.
 
-5. **`posix_fadvise(POSIX_FADV_SEQUENTIAL)`** to nudge the kernel into
-   aggressive readahead.
-
-6. **Instant process teardown in application mode** — on CLI exit, `_exit(2)`
-   terminates the process immediately (`sb-ext:exit :abort t`), delegating
-   thread joining, memory deallocation, and descriptor closing to the OS kernel
-   just as high-performance C and C++ utilities do. Full RAII cleanup is
-   preserved in library mode.
-
-The claim this project supports — verified by the benchmarks below — is
-that on the same hardware, a Common Lisp implementation using the *same
-algorithms* is within measurement noise of a hand-tuned C++ implementation
-using the same algorithms. See [Comparison with fastlwc-mt](#comparison-with-fastlwc-mt).
+It is significant because it shows we don't have to drop into C or C++ for the
+speed. Normally, when we need more speed in Lisp, the custom is to write it in
+C. Hopefully this shows that, with SBCL, it is not necessary. If you want to
+reuse a library written in another language, you still have to use FFI, but this
+project shows that we can go hand in hand with hand-tuned C++, which I think is
+cool.
 
 ---
 
 ## Features
 
-- Line, word, byte and character counts for ASCII and utf8 text
+This program implements almost all GNU `wc` features verbatim, minus the Unicode
+handling:
+
+- Line, word, byte, and character counts for ASCII and UTF-8 text.
 
 - Strict UTF-8 mode (`--utf8-strict`) that rejects surrogate-half encodings
   (0xED followed by 0xA0–0xBF) and out-of-range lead bytes (< 0xC2 or > 0xF4).
 
 - Three interchangeable kernels per operation:
+
   - **Generic** — pure-Lisp SWAR (`logcount` on 64-bit masks, 8 bytes at a
     time). Always available. No CPU-feature dependency.
   - **AVX2** — 256-bit vector kernels built on `sb-simd` (`u8.32`, `u64.4`,
@@ -85,36 +106,55 @@ using the same algorithms. See [Comparison with fastlwc-mt](#comparison-with-fas
 
 - Multi-threaded scheduler with a reusable worker pool and `pread`-based
   block scheduling, falling back to a single-threaded linear read loop when
-  `number-threads ≤ 1` or when reading from non-seekable streams
+  `number-threads ≤ 1` or when reading from non-seekable streams.
 
 - Runtime kernel selection via `--implementation` and a dispatch table,
   so the same binary can exercise all available kernels for benchmarking.
 
-- Standardized public API (see `docs/library-manual.md`) with three tiers:
-  raw SAP pointers, file descriptors, and paths.
+- Standardized public API (see `docs/library-manual.md`) with three tiers: raw
+  SAP pointers, file descriptors, and paths, so you can reuse the counting
+  kernels in your programs, if you need them, without calling an external
+  process.
+
+- Pipes and file redirection work as well.
+
+What we don't have:
+
+Locale and Unicode character handling when counting whitespace, and the `-L` option
+(printed column width) for the same reason. Of course, we can add it; I just
+haven't done it yet. If someone would like to contribute a PR, I would gladly
+accept it. Note that we can still count UTF-8 correctly; it is just that we don't
+recognize all 25 whitespace characters and similar nonsense that the Unicode
+standard defines.
 
 ---
 
 ## Requirements
 
-- **SBCL** (the system uses `sb-sys:system-area-pointer`, `sb-thread`,
-  `sb-posix`, and defines a custom VOP — see `docs/sbcl-notes.md`).
+Obviously **SBCL** is a hard requirement. The system makes use of SBCL-only
+features, most notably `sb-simd`, and the ability to emit our own assembly via
+the built-in VOP primitives. See `docs/sbcl-notes.md` for the exact matrix of
+SBCL-only features used.
 
-- **A custom SBCL / sb-simd tree for AVX-512.** The AVX-512 backends depend on
-  instruction-set additions (`avx512bw:u8.64`, mask types, `fpopcount`) that
-  require the `evec` encoder branch in SBCL. The author maintains [a branch that
-  provides this](https://github.com/amno1/sbcl); you must build SBCL against
-  that branch if you want the AVX-512 kernels to compile.
+If you have a modern machine with an AVX-512 capable CPU, you will actually need **a
+custom SBCL / sb-simd tree for AVX-512.** The AVX-512 backend depends on
+instruction-set additions (`avx512bw:u8.64` and mask types) which are only
+available in [a branch that the author
+provides](https://github.com/amno1/sbcl). You will have to clone that repository
+and build SBCL against the `sb-simd-512` branch if you want the AVX-512 kernels to
+compile.
 
-- [`with-user-abort`](https://github.com/compufox/with-user-abort) and `uiop`
-  (pulled in automatically as ASDF dependencies).
+I do use [`with-user-abort`](https://github.com/compufox/with-user-abort) and
+`uiop` (pulled in automatically as ASDF dependencies) for third-party
+dependencies.
 
-- Linux/Unix for `sb-posix` and `pread` (not tested on other OS:s).
+When it comes to the OS, I have only tested on Linux; I haven't had time to test
+on Windows, and don't have access to other OSes.
 
 > If you do **not** have the custom SBCL branch, everything still builds:
 > `#+avx512` is simply off, and the AVX-512 kernels fall back to AVX2 or generic
-> implementations in `dispatch.cl`. You can also force a portable generic build with
-> `WC_NO_SIMD=1` (see [Building](#building)).
+> implementations in `dispatch.cl`. You can also force a portable generic build
+> with `WC_NO_SIMD=1` (see [Building](#building)).
 
 ---
 
@@ -142,8 +182,8 @@ WC_NO_SIMD=1 sbcl --eval '(asdf:make :wordcount)'
 ```
 
 This suppresses the `:avx2` and `:avx512` features at ASDF-time, so only the
-generic SWAR kernels are compiled in. The resulting binary is **fully
-portable** across all x86-64 machines (see `docs/sbcl-notes.md`).
+generic SWAR kernels are compiled in. The resulting binary should be fully
+portable across x86-64 machines (see `docs/sbcl-notes.md`).
 
 ---
 
@@ -225,6 +265,7 @@ AVX-512-based). On this 1 GiB workload, the total wall-time of the
 identical within measurement noise.
 
 Notice the CPU-time breakdown:
+
 - `fastlwc-mt` spends significantly more time in `sys` (~0.23 s vs ~0.15 s).
 - `wc` spends very little time in `user` (~0.03 s vs ~0.11 s), demonstrating
   the efficiency of the compiled SBCL AVX-512 kernels.
@@ -289,17 +330,33 @@ into four vertical layers plus a horizontal set of kernel modules:
 
 ## Documentation
 
-[`docs/user-manual.md`](docs/user-manual.md) — the CLI, optiona, examples, and
+To use the `wc` program itself, you can consult the GNU `wc` manual. However,
+there are some extra options, notably allowing you to tune execution for your CPU
+(chunk size and number of threads). See:
+
+[`docs/user-manual.md`](docs/user-manual.md) — the CLI, options, examples, and
   differences from GNU `wc`.
-  
+
+The public API is documented below:
+
 [`docs/library-manual.md`](docs/library-manual.md) — the three API tiers, kernel
   families, backend selection, threading model, and symbol reference.
 
-[`docs/sbcl-notes.md`](docs/sbcl-notes.md) — SBCL-specific internals in use
+The API is currently a work in progress; if you are interested in toying with it,
+go ahead, but I still have plans to rewrite it, especially the generic (portable)
+part.
+
+[`docs/sbcl-notes.md`](docs/sbcl-notes.md) — SBCL-specific internals in use.
 
 ---
 
 ## License
 
 GPL-3.0-or-later. See `wordcount.asd`.
+
+---
+
+## Author
+
+Arthur Miller (<arthur.miller@live.com>)
 

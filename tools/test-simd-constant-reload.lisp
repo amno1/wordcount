@@ -4,7 +4,7 @@
 ;;; constants out of loops when bound with LET or LOAD-TIME-VALUE, causing
 ;;; redundant memory reloads from the code constant pool on every iteration.
 ;;;
-;;; Run with: sbcl --noinform --load tools/test-simd-constant-reload.lisp
+;;; Run with: sbcl --noinform --load test-simd-constant-reload.lisp
 
 (require :sb-simd)
 
@@ -65,19 +65,19 @@
 
 (format t "~%================================================================~%")
 (format t "CASE 1: LET with literal (u8.32 10)~%")
-(format t "Notice: 4 x VMOVDQU YMM1, [RIP-disp] INSIDE the loop body!~%")
+(format t "Notice: 4 x VMOVDQU YMM1, [RIP-disp] INSIDE the loop body~%")
 (format t "================================================================~%")
 (disassemble 'test-literal)
 
 (format t "~%================================================================~%")
 (format t "CASE 2: LET with (load-time-value (u8.32 10))~%")
-(format t "Notice: 4 x VMOVDQU YMM1, [RIP-disp] INSIDE the loop body!~%")
+(format t "Notice: 4 x VMOVDQU YMM1, [RIP-disp] INSIDE the loop body~%")
 (format t "================================================================~%")
 (disassemble 'test-load-time-value)
 
 (format t "~%================================================================~%")
 (format t "CASE 3: LET with DEFGLOBAL (*g-vec*)~%")
-(format t "Notice: VMOVDQU YMM1 loaded ONCE BEFORE loop entry; 0 reloads inside!~%")
+(format t "Notice: VMOVDQU YMM1 loaded ONCE BEFORE loop entry; 0 reloads inside:~%")
 (format t "================================================================~%")
 (disassemble 'test-defglobal)
 
