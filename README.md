@@ -35,9 +35,9 @@ with this one since May 2026, and it led me to implement support for an AVX-512
 backend in SBCL. 
 
 Unusually for me, but I am actually quite happy with this :). I think it serves
-both as a demo that the backend works as intended. But it also demoes that
-writing fast programs is not so much a question of language, but more of what
-you do with that language.  Instrumental here was also a compiler that gives me
+both as a demo that the backend works as intended, but also demoes that writing
+fast programs is not so much a question of language, but more of what you do
+with that language.  Instrumental here was also a compiler that gives me
 unrestrictied access to the machine, similar as C or C++ compilers do.  I am no
 longer sure this is Lisp, I think this is rather C in Lisp clothes.  I guess
 when in Rome, do as the Romans do! In this case it translates to doing in Lisp
