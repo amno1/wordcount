@@ -125,28 +125,33 @@
                  (setf (worker-error w) e))))
         (sb-thread:signal-semaphore (pool-done-sem p))))))
 
+(defun %shutdown-worker-pool ()
+  "Shut down all worker threads and free allocated foreign memory.
+The caller must hold *POOL-LOCK*."
+  (when *worker-pool*
+    (let* ((p *worker-pool*)
+           (workers (pool-workers p))
+           (n (pool-nthreads p)))
+      (setf (pool-running p) nil)
+      (loop for i from 1 below n
+            for w = (aref workers i)
+            do (sb-thread:signal-semaphore (worker-start-sem w)))
+      (loop for i from 1 below n
+            for w = (aref workers i)
+            when (worker-thread w)
+            do (sb-thread:join-thread (worker-thread w)))
+      (loop for i from 0 below n
+            for w = (aref workers i)
+            when (not (sb-sys:sap= (worker-raw w) (sb-sys:int-sap 0)))
+            do (sb-posix:alien-free (worker-raw w))
+               (setf (worker-raw w) (sb-sys:int-sap 0)
+                     (worker-buf-sap w) (sb-sys:int-sap 0)))
+      (setf *worker-pool* nil))))
+
 (defun shutdown-worker-pool ()
   "Shut down all worker threads and free allocated foreign memory."
   (sb-thread:with-mutex (*pool-lock*)
-    (when *worker-pool*
-      (let* ((p *worker-pool*)
-             (workers (pool-workers p))
-             (n (pool-nthreads p)))
-        (setf (pool-running p) nil)
-        (loop for i from 1 below n
-              for w = (aref workers i)
-              do (sb-thread:signal-semaphore (worker-start-sem w)))
-        (loop for i from 1 below n
-              for w = (aref workers i)
-              when (worker-thread w)
-              do (sb-thread:join-thread (worker-thread w)))
-        (loop for i from 0 below n
-              for w = (aref workers i)
-              when (not (sb-sys:sap= (worker-raw w) (sb-sys:int-sap 0)))
-              do (sb-posix:alien-free (worker-raw w))
-                 (setf (worker-raw w) (sb-sys:int-sap 0)
-                       (worker-buf-sap w) (sb-sys:int-sap 0)))
-        (setf *worker-pool* nil)))))
+    (%shutdown-worker-pool)))
 
 (defun ensure-worker-pool (nthreads chunk-size)
   (declare (type fixnum nthreads chunk-size))
@@ -157,7 +162,7 @@
                (>= (pool-chunk-size p) chunk-size))
           p
           (progn
-            (when p (shutdown-worker-pool))
+            (when p (%shutdown-worker-pool))
             (let* ((done-sem (sb-thread:make-semaphore))
                    (workers (make-array nthreads))
                    (new-p (make-worker-pool :nthreads nthreads
